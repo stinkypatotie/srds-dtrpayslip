@@ -98,22 +98,17 @@
     </div>
 
     <script>
-        // ============================================
-        // FIREBASE CONFIGURATION
-        // ============================================
-        // TODO: Replace with your Firebase config
-        // Get this from Firebase Console > Project Settings > Your Apps
         // For Firebase JS SDK v7.20.0 and later, measurementId is optional
-    const firebaseConfig = {
-          apiKey: "AIzaSyDbeMGD1rdPMoikNh7gqGmHYxzJ3kolBdE",
-          authDomain: "sirramosds-dtrapp.firebaseapp.com",
-          databaseURL: "https://sirramosds-dtrapp-default-rtdb.asia-southeast1.firebasedatabase.app",
-          projectId: "sirramosds-dtrapp",
-          storageBucket: "sirramosds-dtrapp.firebasestorage.app",
-          messagingSenderId: "770196503286",
-          appId: "1:770196503286:web:755d13625ba6cb0c8f4ad7",
-          measurementId: "G-R86M2S6BGY"
-    };
+			const firebaseConfig = {
+		apiKey: "AIzaSyDbeMGD1rdPMoikNh7gqGmHYxzJ3kolBdE",
+		authDomain: "sirramosds-dtrapp.firebaseapp.com",
+		databaseURL: "https://sirramosds-dtrapp-default-rtdb.asia-southeast1.firebasedatabase.app",
+		projectId: "sirramosds-dtrapp",
+		storageBucket: "sirramosds-dtrapp.firebasestorage.app",
+		messagingSenderId: "770196503286",
+		appId: "1:770196503286:web:755d13625ba6cb0c8f4ad7",
+		measurementId: "G-R86M2S6BGY"
+	};
         // Initialize Firebase
         let db = null;
         let isFirebaseInitialized = false;
@@ -192,15 +187,25 @@
         
         function save() {
             if (isFirebaseInitialized) {
-                // Save to Firebase
-                db.ref('staff').set(app.staff);
-                db.ref('records').set(app.records);
-                db.ref('deductions').set(app.deductions);
-                db.ref('settings').set({
-                    start: app.start,
-                    end: app.end
-                });
-                console.log('💾 Data saved to Firebase');
+                // Save to Firebase with error handling
+                const updates = {
+                    staff: app.staff,
+                    records: app.records,
+                    deductions: app.deductions,
+                    settings: {
+                        start: app.start,
+                        end: app.end
+                    }
+                };
+
+                db.ref().update(updates)
+                    .then(() => {
+                        console.log('💾 Data saved to Firebase successfully');
+                    })
+                    .catch((error) => {
+                        console.error('❌ Firebase save error:', error);
+                        alert('Error saving to database. Check console for details.');
+                    });
             } else {
                 // Fallback to localStorage
                 localStorage.setItem('staff', JSON.stringify(app.staff));
@@ -217,30 +222,67 @@
                 // Load from Firebase
                 console.log('📥 Loading data from Firebase...');
                 
+                // Load staff
                 db.ref('staff').on('value', (snapshot) => {
-                    app.staff = snapshot.val() || [];
-                    console.log('✅ Staff loaded:', app.staff.length);
+                    const data = snapshot.val();
+                    if (data) {
+                        // Convert object to array if needed
+                        app.staff = Array.isArray(data) ? data : Object.values(data);
+                    } else {
+                        app.staff = [];
+                    }
+                    console.log('✅ Staff loaded:', app.staff.length, 'records');
                     render();
+                }, (error) => {
+                    console.error('❌ Error loading staff:', error);
                 });
 
+                // Load records
                 db.ref('records').on('value', (snapshot) => {
-                    app.records = snapshot.val() || [];
-                    console.log('✅ Records loaded:', app.records.length);
+                    const data = snapshot.val();
+                    if (data) {
+                        app.records = Array.isArray(data) ? data : Object.values(data);
+                    } else {
+                        app.records = [];
+                    }
+                    console.log('✅ Records loaded:', app.records.length, 'entries');
                     render();
+                }, (error) => {
+                    console.error('❌ Error loading records:', error);
                 });
 
+                // Load deductions
                 db.ref('deductions').on('value', (snapshot) => {
-                    app.deductions = snapshot.val() || [];
-                    console.log('✅ Deductions loaded:', app.deductions.length);
+                    const data = snapshot.val();
+                    if (data) {
+                        app.deductions = Array.isArray(data) ? data : Object.values(data);
+                    } else {
+                        app.deductions = [];
+                    }
+                    console.log('✅ Deductions loaded:', app.deductions.length, 'items');
                     render();
+                }, (error) => {
+                    console.error('❌ Error loading deductions:', error);
                 });
 
+                // Load settings
                 db.ref('settings').on('value', (snapshot) => {
                     const settings = snapshot.val() || {};
                     app.start = settings.start || '';
                     app.end = settings.end || '';
                     console.log('✅ Settings loaded');
                     render();
+                }, (error) => {
+                    console.error('❌ Error loading settings:', error);
+                });
+
+                // Test database write permission
+                db.ref('.info/connected').on('value', (snapshot) => {
+                    if (snapshot.val() === true) {
+                        console.log('✅ Connected to Firebase');
+                    } else {
+                        console.log('⚠️ Disconnected from Firebase');
+                    }
                 });
             } else {
                 // Fallback to localStorage
@@ -709,6 +751,34 @@
                 <div class="status">
                     <strong>Current Device:</strong> <code>${currentDevice}</code>
                 </div>
+                
+                ${isFirebaseInitialized ? `
+                    <div style="background:#e3f2fd;padding:20px;border-radius:8px;margin:20px 0;border-left:4px solid #2196F3">
+                        <h3 style="margin-bottom:15px">🔥 Firebase Status</h3>
+                        <div style="display:grid;gap:10px">
+                            <div><strong>Status:</strong> <span style="color:#4CAF50">✅ Connected</span></div>
+                            <div><strong>Project:</strong> ${firebaseConfig.projectId}</div>
+                            <div><strong>Database:</strong> ${firebaseConfig.databaseURL}</div>
+                        </div>
+                        <div style="margin-top:15px">
+                            <button class="btn-primary" onclick="testFirebaseConnection()">🧪 Test Connection</button>
+                            <button style="background:#FF9800;color:white;padding:12px 24px;border:none;border-radius:4px;cursor:pointer" onclick="viewFirebaseData()">📊 View Database</button>
+                        </div>
+                        <div id="firebase-test-msg"></div>
+                    </div>
+                ` : `
+                    <div style="background:#fff3cd;padding:20px;border-radius:8px;margin:20px 0;border-left:4px solid #FF9800">
+                        <h3 style="margin-bottom:15px">⚠️ Firebase Not Connected</h3>
+                        <p style="margin-bottom:15px">Firebase configuration is not set up. Your data is only stored locally on this device.</p>
+                        <p><strong>To enable cloud sync:</strong></p>
+                        <ol style="margin:10px 0 0 20px">
+                            <li>Open the FIREBASE_SETUP_GUIDE.md file</li>
+                            <li>Follow the setup instructions</li>
+                            <li>Update the Firebase config in your HTML file</li>
+                        </ol>
+                    </div>
+                `}
+                
                 <h3 style="margin-top:30px;margin-bottom:15px">Authorize New Device</h3>
                 <div class="form-grid">
                     <div class="form-group">
@@ -1060,6 +1130,48 @@
             }
             document.getElementById('newDevId').value = '';
             msg('devMsg', 'Device authorized!', 'ok');
+        }
+
+        function testFirebaseConnection() {
+            if (!isFirebaseInitialized) {
+                msg('firebase-test-msg', 'Firebase not initialized', 'err');
+                return;
+            }
+
+            const testData = { test: true, timestamp: Date.now() };
+            
+            db.ref('_test').set(testData)
+                .then(() => {
+                    return db.ref('_test').once('value');
+                })
+                .then((snapshot) => {
+                    const data = snapshot.val();
+                    if (data && data.test === true) {
+                        msg('firebase-test-msg', '✅ Connection test successful! Read and write permissions work.', 'ok');
+                        // Clean up test data
+                        db.ref('_test').remove();
+                    } else {
+                        msg('firebase-test-msg', '⚠️ Write successful but read failed. Check database rules.', 'err');
+                    }
+                })
+                .catch((error) => {
+                    console.error('Firebase test error:', error);
+                    msg('firebase-test-msg', `❌ Test failed: ${error.message}. Check database rules in Firebase Console.`, 'err');
+                });
+        }
+
+        function viewFirebaseData() {
+            if (!isFirebaseInitialized) {
+                alert('Firebase not initialized');
+                return;
+            }
+
+            const dbUrl = firebaseConfig.databaseURL;
+            const consoleUrl = `https://console.firebase.google.com/project/${firebaseConfig.projectId}/database/data`;
+            
+            if (confirm('Open Firebase Console to view your data?\n\nYou can see all your data in real-time there.')) {
+                window.open(consoleUrl, '_blank');
+            }
         }
 
         function expXL() {
