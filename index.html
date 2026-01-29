@@ -1,0 +1,1132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sir Ramos Drugstore</title>
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; background: #f5f5f5; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .header { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .header h1 { font-size: 28px; color: #333; margin-bottom: 20px; }
+        .tabs { display: flex; gap: 10px; flex-wrap: wrap; }
+        .tab { padding: 12px 24px; border: none; background: #e0e0e0; color: #666; border-radius: 6px; cursor: pointer; font-size: 14px; position: relative; }
+        .tab.active { background: #2196F3; color: white; }
+        .tab .lock { position: absolute; top: 5px; right: 8px; font-size: 10px; }
+        .content { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h2 { font-size: 20px; color: #333; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 2px solid #2196F3; }
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        .form-group { display: flex; flex-direction: column; }
+        label { font-size: 14px; font-weight: 600; color: #555; margin-bottom: 5px; }
+        input, select { padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
+        button { padding: 12px 24px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+        .btn-primary { background: #4CAF50; color: white; }
+        .btn-warning { background: #FF9800; color: white; }
+        .btn-danger { background: #f44336; color: white; }
+        .item { background: #f9f9f9; padding: 15px; border-radius: 6px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th { background: #2196F3; color: white; padding: 12px; text-align: left; border: 1px solid #ddd; }
+        td { padding: 10px; border: 1px solid #ddd; }
+        tr:nth-child(even) { background: #f9f9f9; }
+        .status { background: #e8f5e9; padding: 10px; border-radius: 4px; margin-bottom: 20px; border-left: 4px solid #4CAF50; }
+        .status.warn { background: #fff3cd; border-left-color: #FF9800; }
+        .msg { padding: 10px; border-radius: 4px; margin-top: 10px; }
+        .msg.ok { background: #d4edda; color: #155724; }
+        .msg.err { background: #f8d7da; color: #721c24; }
+        .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+        .modal-content { background: white; padding: 30px; border-radius: 8px; max-width: 400px; width: 90%; }
+        .admin-badge { background: #FF9800; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; margin-left: 10px; }
+        .logout-btn { background: #f44336; color: white; padding: 8px 16px; border-radius: 4px; font-size: 12px; cursor: pointer; border: none; }
+        .action-buttons { display: flex; gap: 10px; }
+        @media print { .header, .tabs, .no-print { display: none !important; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header no-print">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h1>Sir Ramos Drugstore</h1>
+                <div id="admin-status"></div>
+            </div>
+            <div class="tabs" id="tabs"></div>
+        </div>
+        <div class="content" id="view"></div>
+    </div>
+
+    <div id="auth-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <h2 style="margin-bottom: 20px;">🔒 Admin Access Required</h2>
+            <p style="color: #666; margin-bottom: 20px;">Enter admin password to continue</p>
+            <input type="password" id="admin-password" placeholder="Admin Password" style="width: 100%; padding: 10px; margin-bottom: 15px;">
+            <div id="auth-error" style="color: #f44336; margin-bottom: 15px; font-size: 14px;"></div>
+            <div style="display: flex; gap: 10px;">
+                <button class="btn-primary" onclick="verifyPassword()" style="flex: 1;">Login</button>
+                <button class="btn-danger" onclick="closeAuthModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="edit-modal" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 500px;">
+            <h2 style="margin-bottom: 20px;">✏️ Update Employee Information</h2>
+            <div class="form-group" style="margin-bottom: 15px;">
+                <label>Employee Name</label>
+                <input type="text" id="edit-name" placeholder="Enter employee name">
+            </div>
+            <div class="form-group" style="margin-bottom: 15px;">
+                <label>Position</label>
+                <select id="edit-position">
+                    <option value="regular">Regular Staff</option>
+                    <option value="senior">Senior Staff</option>
+                    <option value="trainee">Trainee</option>
+                </select>
+            </div>
+            <div class="form-group" style="margin-bottom: 15px;">
+                <label>PIN Code</label>
+                <input type="text" id="edit-pin" placeholder="4-digit PIN" maxlength="4">
+            </div>
+            <div id="edit-msg" class="msg" style="display: none;"></div>
+            <div style="display: flex; gap: 10px; margin-top: 20px;">
+                <button class="btn-primary" onclick="saveEmployeeUpdate()" style="flex: 1;">Save Changes</button>
+                <button class="btn-danger" onclick="closeEditModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+import { getAnalytics } from "firebase/analytics";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyDbeMGD1rdPMoikNh7gqGmHYxzJ3kolBdE",
+  authDomain: "sirramosds-dtrapp.firebaseapp.com",
+  databaseURL: "https://sirramosds-dtrapp-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "sirramosds-dtrapp",
+  storageBucket: "sirramosds-dtrapp.firebasestorage.app",
+  messagingSenderId: "770196503286",
+  appId: "1:770196503286:web:755d13625ba6cb0c8f4ad7",
+  measurementId: "G-R86M2S6BGY"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
+
+        // Admin Password
+        const ADMIN_PASSWORD = "admin123";
+        let isAdminAuthenticated = false;
+        let adminAuthTimeout = null;
+        let currentEditingStaffId = null;
+        let hideAdminTabs = localStorage.getItem('hideAdminTabs') === 'true';
+
+        // Device Authorization (kept in localStorage for device-specific auth)
+        function getDeviceId() {
+            let deviceId = localStorage.getItem('deviceId');
+            if (!deviceId) {
+                deviceId = 'dev_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                localStorage.setItem('deviceId', deviceId);
+            }
+            return deviceId;
+        }
+
+        function checkDeviceAuth() {
+            const authorizedDevices = JSON.parse(localStorage.getItem('authorizedDevices')) || [];
+            const currentDevice = getDeviceId();
+            if (authorizedDevices.length === 0) return true;
+            return authorizedDevices.includes(currentDevice);
+        }
+
+        function showAuthScreen() {
+            const currentDevice = getDeviceId();
+            document.body.innerHTML = `
+                <div style="display:flex;justify-content:center;align-items:center;min-height:100vh;background:#f5f5f5">
+                    <div style="background:white;padding:40px;border-radius:8px;box-shadow:0 4px 6px rgba(0,0,0,0.1);max-width:500px;text-align:center">
+                        <h1 style="color:#f44336;margin-bottom:20px">🔒 Device Not Authorized</h1>
+                        <p style="color:#666;margin-bottom:30px">This device is not authorized to access the system.</p>
+                        <div style="background:#f9f9f9;padding:20px;border-radius:6px;margin-bottom:20px">
+                            <p style="font-size:12px;color:#999;margin-bottom:10px">Your Device ID:</p>
+                            <p style="font-family:monospace;font-size:14px;color:#333;word-break:break-all;background:white;padding:10px;border-radius:4px">${currentDevice}</p>
+                        </div>
+                        <p style="font-size:14px;color:#666">Contact administrator to authorize this device.</p>
+                    </div>
+                </div>
+            `;
+        }
+
+        if (!checkDeviceAuth()) {
+            showAuthScreen();
+            throw new Error('Unauthorized device');
+        }
+
+        // App State
+        const app = {
+            staff: [],
+            records: [],
+            deductions: [],
+            start: '',
+            end: '',
+            view: 'dtr'
+        };
+
+        const RATES = { regular: { daily: 650, ot: 68 }, trainee: { daily: 500, ot: 52 }, senior: { daily: 700, ot: 73 } };
+
+        // ============================================
+        // FIREBASE DATABASE FUNCTIONS
+        // ============================================
+        
+        function save() {
+            if (isFirebaseInitialized) {
+                // Save to Firebase
+                db.ref('staff').set(app.staff);
+                db.ref('records').set(app.records);
+                db.ref('deductions').set(app.deductions);
+                db.ref('settings').set({
+                    start: app.start,
+                    end: app.end
+                });
+                console.log('💾 Data saved to Firebase');
+            } else {
+                // Fallback to localStorage
+                localStorage.setItem('staff', JSON.stringify(app.staff));
+                localStorage.setItem('records', JSON.stringify(app.records));
+                localStorage.setItem('deductions', JSON.stringify(app.deductions));
+                localStorage.setItem('start', app.start);
+                localStorage.setItem('end', app.end);
+                console.log('💾 Data saved to localStorage (fallback)');
+            }
+        }
+
+        function loadData() {
+            if (isFirebaseInitialized) {
+                // Load from Firebase
+                console.log('📥 Loading data from Firebase...');
+                
+                db.ref('staff').on('value', (snapshot) => {
+                    app.staff = snapshot.val() || [];
+                    console.log('✅ Staff loaded:', app.staff.length);
+                    render();
+                });
+
+                db.ref('records').on('value', (snapshot) => {
+                    app.records = snapshot.val() || [];
+                    console.log('✅ Records loaded:', app.records.length);
+                    render();
+                });
+
+                db.ref('deductions').on('value', (snapshot) => {
+                    app.deductions = snapshot.val() || [];
+                    console.log('✅ Deductions loaded:', app.deductions.length);
+                    render();
+                });
+
+                db.ref('settings').on('value', (snapshot) => {
+                    const settings = snapshot.val() || {};
+                    app.start = settings.start || '';
+                    app.end = settings.end || '';
+                    console.log('✅ Settings loaded');
+                    render();
+                });
+            } else {
+                // Fallback to localStorage
+                app.staff = JSON.parse(localStorage.getItem('staff')) || [];
+                app.records = JSON.parse(localStorage.getItem('records')) || [];
+                app.deductions = JSON.parse(localStorage.getItem('deductions')) || [];
+                app.start = localStorage.getItem('start') || '';
+                app.end = localStorage.getItem('end') || '';
+                console.log('📥 Data loaded from localStorage (fallback)');
+            }
+        }
+
+        // Admin Authentication
+        function requireAdmin(callback) {
+            if (isAdminAuthenticated) {
+                resetAdminTimeout();
+                callback();
+                return;
+            }
+            showAuthModal(callback);
+        }
+
+        function showAuthModal(callback) {
+            document.getElementById('auth-modal').style.display = 'flex';
+            document.getElementById('admin-password').value = '';
+            document.getElementById('auth-error').textContent = '';
+            window.pendingAdminCallback = callback;
+            document.getElementById('admin-password').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') verifyPassword();
+            });
+        }
+
+        function closeAuthModal() {
+            document.getElementById('auth-modal').style.display = 'none';
+            window.pendingAdminCallback = null;
+        }
+
+        function verifyPassword() {
+            const password = document.getElementById('admin-password').value;
+            if (password === ADMIN_PASSWORD) {
+                isAdminAuthenticated = true;
+                closeAuthModal();
+                updateAdminStatus();
+                resetAdminTimeout();
+                if (window.pendingAdminCallback) {
+                    window.pendingAdminCallback();
+                    window.pendingAdminCallback = null;
+                }
+            } else {
+                document.getElementById('auth-error').textContent = '❌ Incorrect password';
+            }
+        }
+
+        function resetAdminTimeout() {
+            if (adminAuthTimeout) clearTimeout(adminAuthTimeout);
+            adminAuthTimeout = setTimeout(() => {
+                isAdminAuthenticated = false;
+                updateAdminStatus();
+                alert('Admin session expired due to inactivity');
+            }, 600000);
+        }
+
+        function logout() {
+            isAdminAuthenticated = false;
+            if (adminAuthTimeout) clearTimeout(adminAuthTimeout);
+            updateAdminStatus();
+            render();
+        }
+
+        // Admin UI Toggle
+        function toggleAdminUI() {
+            hideAdminTabs = !hideAdminTabs;
+            localStorage.setItem('hideAdminTabs', String(hideAdminTabs));
+            if (hideAdminTabs && app.view !== 'dtr') {
+                app.view = 'dtr';
+            }
+            updateAdminStatus();
+            render();
+        }
+
+        function updateAdminStatus() {
+            const statusDiv = document.getElementById('admin-status');
+            
+            // Firebase status indicator
+            const firebaseStatus = isFirebaseInitialized 
+                ? '<span style="background:#4CAF50;color:white;padding:4px 8px;border-radius:4px;font-size:11px;margin-right:10px">🔥 Firebase Connected</span>'
+                : '<span style="background:#FF9800;color:white;padding:4px 8px;border-radius:4px;font-size:11px;margin-right:10px">⚠️ Using Local Storage</span>';
+            
+            if (isAdminAuthenticated) {
+                statusDiv.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        ${firebaseStatus}
+                        <span class="admin-badge">👤 Admin Mode</span>
+                        <button style="background: ${hideAdminTabs ? '#4CAF50' : '#FF9800'}; color: white; padding: 8px 16px; border-radius: 4px; font-size: 12px; cursor: pointer; border: none;" onclick="toggleAdminUI()">
+                            ${hideAdminTabs ? '👁️ Show Tabs' : '👁️‍🗨️ Hide Tabs'}
+                        </button>
+                        <button class="logout-btn" onclick="logout()">Logout</button>
+                    </div>
+                `;
+            } else {
+                statusDiv.innerHTML = firebaseStatus;
+            }
+        }
+
+        // Edit Employee Functions
+        function showEditModal(staffId) {
+            const staff = app.staff.find(s => s.id === staffId);
+            if (!staff) return;
+
+            currentEditingStaffId = staffId;
+            document.getElementById('edit-name').value = staff.name;
+            document.getElementById('edit-position').value = staff.position;
+            document.getElementById('edit-pin').value = staff.pin;
+            document.getElementById('edit-modal').style.display = 'flex';
+            document.getElementById('edit-msg').style.display = 'none';
+        }
+
+        function closeEditModal() {
+            document.getElementById('edit-modal').style.display = 'none';
+            currentEditingStaffId = null;
+        }
+
+        function saveEmployeeUpdate() {
+            const name = document.getElementById('edit-name').value.trim();
+            const position = document.getElementById('edit-position').value;
+            const pin = document.getElementById('edit-pin').value.trim();
+
+            if (!name || !pin) {
+                showEditMessage('Please fill all fields', 'err');
+                return;
+            }
+
+            if (pin.length !== 4 || !/^\d+$/.test(pin)) {
+                showEditMessage('PIN must be 4 digits', 'err');
+                return;
+            }
+
+            // Check if PIN is already used by another employee
+            const pinExists = app.staff.some(s => s.pin === pin && s.id !== currentEditingStaffId);
+            if (pinExists) {
+                showEditMessage('PIN already in use', 'err');
+                return;
+            }
+
+            // Update the staff member
+            const staffIndex = app.staff.findIndex(s => s.id === currentEditingStaffId);
+            if (staffIndex !== -1) {
+                app.staff[staffIndex].name = name;
+                app.staff[staffIndex].position = position;
+                app.staff[staffIndex].pin = pin;
+                save();
+                showEditMessage('Employee updated successfully!', 'ok');
+                setTimeout(() => {
+                    closeEditModal();
+                    render();
+                }, 1500);
+            }
+        }
+
+        function showEditMessage(text, type) {
+            const msgEl = document.getElementById('edit-msg');
+            msgEl.textContent = text;
+            msgEl.className = 'msg ' + type;
+            msgEl.style.display = 'block';
+        }
+
+        // Render Functions
+        function render() {
+            const tabs = [
+                { id: 'dtr', name: 'DTR' },
+                { id: 'staff', name: '👤 Staff', admin: true },
+                { id: 'deductions', name: '💸 Deductions', admin: true },
+                { id: 'pay', name: '💰 Payroll', admin: true },
+                { id: 'export', name: '📊 Export', admin: true },
+                { id: 'tg', name: '📱 Telegram', admin: true },
+                { id: 'device', name: '🔐 Devices', admin: true }
+            ];
+
+            // Filter tabs based on hideAdminTabs setting
+            const visibleTabs = hideAdminTabs ? tabs.filter(t => !t.admin) : tabs;
+
+            document.getElementById('tabs').innerHTML = visibleTabs.map(t => {
+                const locked = t.admin && !isAdminAuthenticated;
+                return `<button class="tab ${app.view === t.id ? 'active' : ''}" 
+                    onclick="${locked ? 'requireAdmin(() => switchView(\'' + t.id + '\'))' : 'switchView(\'' + t.id + '\')'}"
+                    ${locked ? 'style="cursor:not-allowed"' : ''}>
+                    ${t.name} ${locked ? '<span class="lock">🔒</span>' : ''}
+                </button>`;
+            }).join('');
+
+            const views = { dtr: renderDTR, staff: renderStaff, deductions: renderDeductions, pay: renderPay, export: renderExport, tg: renderTG, device: renderDevice };
+            views[app.view]();
+        }
+
+        function switchView(v) {
+            app.view = v;
+            render();
+        }
+
+        function renderDTR() {
+            const today = new Date().toISOString().split('T')[0];
+            const todayRecs = app.records.filter(r => r.date === today);
+
+            document.getElementById('view').innerHTML = `
+                <h2>Daily Time Record</h2>
+                <div class="status">
+                    <strong>📅 Today:</strong> ${new Date().toLocaleDateString('en-US', {weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'})}
+                </div>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Enter PIN</label>
+                        <input type="password" id="pin" placeholder="4-digit PIN" maxlength="4">
+                    </div>
+                </div>
+                <div style="display:flex;gap:10px;margin-bottom:20px">
+                    <button class="btn-primary" onclick="clockIn()">⏰ Clock In</button>
+                    <button class="btn-danger" onclick="clockOut()">⏰ Clock Out</button>
+                </div>
+                <div id="msg"></div>
+                
+                ${isAdminAuthenticated ? `
+                    <div style="border-top:2px solid #ddd;margin-top:30px;padding-top:30px">
+                        <h3 style="margin-bottom:20px">🔧 Admin Controls</h3>
+                        
+                        <div style="background:#fff3cd;padding:15px;border-radius:6px;margin-bottom:20px;border-left:4px solid #FF9800">
+                            <strong>⚠️ Manual Entry</strong>
+                        </div>
+                        
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>Select Staff</label>
+                                <select id="manual-staff">
+                                    <option value="">-- Select Staff --</option>
+                                    ${app.staff.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Date</label>
+                                <input type="date" id="manual-date" value="${today}">
+                            </div>
+                            <div class="form-group">
+                                <label>Clock In Time</label>
+                                <input type="time" id="manual-in">
+                            </div>
+                            <div class="form-group">
+                                <label>Clock Out Time</label>
+                                <input type="time" id="manual-out">
+                            </div>
+                        </div>
+                        <button class="btn-primary" onclick="addManualEntry()">➕ Add Manual Entry</button>
+                        <div id="manual-msg"></div>
+                        
+                        <div style="border-top:2px solid #ddd;margin-top:30px;padding-top:20px">
+                            <div style="background:#fff3cd;padding:15px;border-radius:6px;margin-bottom:20px;border-left:4px solid #FF9800">
+                                <strong>📋 Mark Attendance Status</strong>
+                            </div>
+                            
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label>Select Staff</label>
+                                    <select id="status-staff">
+                                        <option value="">-- Select Staff --</option>
+                                        ${app.staff.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Date</label>
+                                    <input type="date" id="status-date" value="${today}">
+                                </div>
+                                <div class="form-group">
+                                    <label>Status</label>
+                                    <select id="status-type">
+                                        <option value="">-- Select Status --</option>
+                                        <option value="rest">🏖️ Rest Day</option>
+                                        <option value="absent">❌ Absent</option>
+                                        <option value="leave">🏥 Leave</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <button class="btn-primary" onclick="markAttendanceStatus()">💾 Mark Status</button>
+                            <div id="status-msg"></div>
+                        </div>
+                    </div>
+                ` : ''}
+                
+                <h3 style="margin-top:30px;margin-bottom:15px">Today's Logs</h3>
+                ${todayRecs.length === 0 ? '<p style="color:#999">No records yet</p>' : 
+                    todayRecs.map(r => {
+                        const s = app.staff.find(x => x.id === r.sid);
+                        let statusBadge = '';
+                        if (r.status === 'rest') statusBadge = '<span style="background:#4CAF50;color:white;padding:4px 8px;border-radius:4px;font-size:11px;margin-left:10px">🏖️ REST DAY</span>';
+                        else if (r.status === 'absent') statusBadge = '<span style="background:#f44336;color:white;padding:4px 8px;border-radius:4px;font-size:11px;margin-left:10px">❌ ABSENT</span>';
+                        else if (r.status === 'leave') statusBadge = '<span style="background:#FF9800;color:white;padding:4px 8px;border-radius:4px;font-size:11px;margin-left:10px">🏥 LEAVE</span>';
+                        
+                        return `<div class="item">
+                            <div><strong>${s ? s.name : 'Unknown'}</strong>${statusBadge}<br>
+                            <small>${r.status ? 'Status marked' : `In: ${r.in} | Out: ${r.out || 'Not yet'}`}</small></div>
+                            ${isAdminAuthenticated ? `<button class="btn-danger" onclick="deleteRecord('${r.id}')">🗑️</button>` : ''}
+                        </div>`;
+                    }).join('')
+                }
+            `;
+        }
+
+        function renderStaff() {
+            document.getElementById('view').innerHTML = `
+                <h2>Staff Management</h2>
+                <div class="form-grid">
+                    <div class="form-group"><label>Name</label><input id="sn" placeholder="Full Name"></div>
+                    <div class="form-group"><label>Position</label>
+                        <select id="sp">
+                            <option value="regular">Regular Staff</option>
+                            <option value="senior">Senior Staff</option>
+                            <option value="trainee">Trainee</option>
+                        </select>
+                    </div>
+                    <div class="form-group"><label>PIN</label><input id="spin" placeholder="4-digit" maxlength="4"></div>
+                </div>
+                <button class="btn-primary" onclick="addStaff()">➕ Add Staff</button>
+                <div id="sm"></div>
+                <h3 style="margin-top:30px;margin-bottom:15px">Staff List (${app.staff.length})</h3>
+                ${app.staff.length === 0 ? '<p style="color:#999">No staff added</p>' :
+                    app.staff.map(s => `
+                        <div class="item">
+                            <div>
+                                <strong>${s.name}</strong><br>
+                                <small>${s.position === 'regular' ? 'Regular Staff' : s.position === 'senior' ? 'Senior Staff' : 'Trainee'} • PIN: ${s.pin}</small>
+                            </div>
+                            <div class="action-buttons">
+                                <button class="btn-warning" onclick="showEditModal('${s.id}')">✏️ Edit</button>
+                                <button class="btn-danger" onclick="delStaff('${s.id}')">🗑️</button>
+                            </div>
+                        </div>
+                    `).join('')
+                }
+            `;
+        }
+
+        function renderDeductions() {
+            document.getElementById('view').innerHTML = `
+                <h2>Deductions Management</h2>
+                <div class="status">
+                    <strong>💸 Manage salary deductions for staff members</strong>
+                </div>
+                
+                <h3 style="margin-top:30px;margin-bottom:20px">Add New Deduction</h3>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Select Staff</label>
+                        <select id="ded-staff">
+                            <option value="">-- Select Staff --</option>
+                            ${app.staff.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Deduction Label</label>
+                        <input id="ded-label" placeholder="e.g., SSS, PhilHealth, Cash Advance">
+                    </div>
+                    <div class="form-group">
+                        <label>Amount (₱)</label>
+                        <input type="number" id="ded-amount" placeholder="0.00" step="0.01" min="0">
+                    </div>
+                </div>
+                <button class="btn-primary" onclick="addDeduction()">➕ Add Deduction</button>
+                <div id="ded-msg"></div>
+                
+                <h3 style="margin-top:40px;margin-bottom:20px">All Deductions</h3>
+                ${app.staff.length === 0 ? '<p style="color:#999">No staff added yet</p>' :
+                    app.staff.map(s => {
+                        const staffDeds = app.deductions.filter(d => d.sid === s.id);
+                        const totalDed = staffDeds.reduce((sum, d) => sum + d.amt, 0);
+                        
+                        return `
+                            <div style="background:#f9f9f9;padding:20px;border-radius:8px;margin-bottom:20px;border-left:4px solid #2196F3">
+                                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px">
+                                    <div>
+                                        <strong style="font-size:18px">${s.name}</strong><br>
+                                        <small style="color:#666">${s.position === 'regular' ? 'Regular Staff' : s.position === 'senior' ? 'Senior Staff' : 'Trainee'}</small>
+                                    </div>
+                                    <div style="text-align:right">
+                                        <div style="font-size:12px;color:#666">Total Deductions</div>
+                                        <div style="font-size:20px;font-weight:bold;color:#f44336">₱${totalDed.toFixed(2)}</div>
+                                    </div>
+                                </div>
+                                ${staffDeds.length === 0 ? 
+                                    '<p style="color:#999;font-size:14px">No deductions</p>' :
+                                    staffDeds.map(d => `
+                                        <div class="item" style="margin-bottom:10px">
+                                            <div>
+                                                <strong>${d.label}</strong><br>
+                                                <small style="color:#f44336;font-size:16px">₱${d.amt.toFixed(2)}</small>
+                                            </div>
+                                            <button class="btn-danger" onclick="deleteDeduction('${d.id}')">🗑️ Remove</button>
+                                        </div>
+                                    `).join('')
+                                }
+                            </div>
+                        `;
+                    }).join('')
+                }
+            `;
+        }
+
+        function renderPay() {
+            document.getElementById('view').innerHTML = `
+                <h2>Payroll Management</h2>
+                <div class="status ${!app.start || !app.end ? 'warn' : ''}">
+                    <strong>${app.start && app.end ? '✅' : '⚠️'} Pay Period:</strong> 
+                    ${app.start && app.end ? `${app.start} to ${app.end}` : 'Not set'}
+                </div>
+                <div class="form-grid">
+                    <div class="form-group"><label>Start</label><input type="date" id="ps" value="${app.start}"></div>
+                    <div class="form-group"><label>End</label><input type="date" id="pe" value="${app.end}"></div>
+                </div>
+                <button class="btn-primary" onclick="setPeriod()">💾 Set Period</button>
+                <div id="pm"></div>
+                <h3 style="margin-top:30px;margin-bottom:15px">Staff Payslips</h3>
+                <div style="display:grid;gap:10px">
+                    ${app.staff.map(s => `<button onclick="viewPayslip('${s.id}')" style="padding:15px;background:#f9f9f9;border:1px solid #ddd;border-radius:6px;cursor:pointer;text-align:left">
+                        <strong>${s.name}</strong><br><small>${s.position === 'regular' ? 'Regular' : s.position === 'senior' ? 'Senior' : 'Trainee'}</small>
+                    </button>`).join('')}
+                </div>
+            `;
+        }
+
+        function renderExport() {
+            document.getElementById('view').innerHTML = `
+                <h2>Export Data</h2>
+                <div class="status">Records: ${app.records.length} | Staff: ${app.staff.length}</div>
+                <div style="display:flex;gap:10px;flex-wrap:wrap">
+                    <button style="background:#28a745;color:white" onclick="expXL()">📊 Excel</button>
+                    <button style="background:#17a2b8;color:white" onclick="expCSV()">📄 CSV</button>
+                    <button style="background:#17a2b8;color:white" onclick="expPay()">💵 Payroll CSV</button>
+                </div>
+                <div id="em"></div>
+            `;
+        }
+
+        function renderTG() {
+            const tg = JSON.parse(localStorage.getItem('tg')) || {on:false, token:'', id:''};
+            document.getElementById('view').innerHTML = `
+                <h2>Telegram Notifications</h2>
+                <div class="form-grid">
+                    <div class="form-group"><label>Enable</label>
+                        <select id="te">
+                            <option value="0" ${!tg.on?'selected':''}>Off</option>
+                            <option value="1" ${tg.on?'selected':''}>On</option>
+                        </select>
+                    </div>
+                    <div class="form-group"><label>Bot Token</label><input id="tt" value="${tg.token}" placeholder="1234567890:ABC..."></div>
+                    <div class="form-group"><label>Chat ID</label><input id="ti" value="${tg.id}" placeholder="-1001234567890"></div>
+                </div>
+                <div style="display:flex;gap:10px">
+                    <button class="btn-primary" onclick="saveTG()">💾 Save</button>
+                    <button style="background:#9C27B0;color:white" onclick="testTG()">📨 Test</button>
+                </div>
+                <div id="tm"></div>
+            `;
+        }
+
+        function renderDevice() {
+            const authorizedDevices = JSON.parse(localStorage.getItem('authorizedDevices')) || [];
+            const currentDevice = getDeviceId();
+            document.getElementById('view').innerHTML = `
+                <h2>Device Management</h2>
+                <div class="status">
+                    <strong>Current Device:</strong> <code>${currentDevice}</code>
+                </div>
+                <h3 style="margin-top:30px;margin-bottom:15px">Authorize New Device</h3>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Device ID</label>
+                        <input id="newDevId" placeholder="Enter device ID">
+                    </div>
+                </div>
+                <button class="btn-primary" onclick="authDevice()">✅ Authorize</button>
+                <div id="devMsg"></div>
+                <h3 style="margin-top:30px;margin-bottom:15px">Authorized Devices (${authorizedDevices.length})</h3>
+                ${authorizedDevices.length === 0 ? '<p style="color:#999">No devices authorized yet</p>' :
+                    authorizedDevices.map(d => `
+                        <div class="item">
+                            <code>${d}</code>
+                            <button class="btn-danger" onclick="removeDevice('${d}')">🗑️ Remove</button>
+                        </div>
+                    `).join('')
+                }
+            `;
+        }
+
+        function removeDevice(deviceId) {
+            if (!confirm('Remove this device?')) return;
+            let authorizedDevices = JSON.parse(localStorage.getItem('authorizedDevices')) || [];
+            authorizedDevices = authorizedDevices.filter(d => d !== deviceId);
+            localStorage.setItem('authorizedDevices', JSON.stringify(authorizedDevices));
+            render();
+        }
+
+        // Staff Functions
+        function addStaff() {
+            const name = document.getElementById('sn').value.trim();
+            const position = document.getElementById('sp').value;
+            const pin = document.getElementById('spin').value.trim();
+
+            if (!name || !pin) return msg('sm', 'Fill all fields', 'err');
+            if (pin.length !== 4 || !/^\d+$/.test(pin)) return msg('sm', 'PIN must be 4 digits', 'err');
+            if (app.staff.some(s => s.pin === pin)) return msg('sm', 'PIN already used', 'err');
+
+            app.staff.push({ id: Date.now().toString(), name, position, pin });
+            save();
+            document.getElementById('sn').value = '';
+            document.getElementById('spin').value = '';
+            msg('sm', 'Staff added!', 'ok');
+            render();
+        }
+
+        function delStaff(id) {
+            if (!confirm('Delete this staff member?')) return;
+            app.staff = app.staff.filter(s => s.id !== id);
+            save();
+            render();
+        }
+
+        // DTR Functions
+        function clockIn() {
+            const pin = document.getElementById('pin').value.trim();
+            const s = app.staff.find(x => x.pin === pin);
+            if (!s) return msg('msg', 'Invalid PIN', 'err');
+
+            const today = new Date().toISOString().split('T')[0];
+            const exists = app.records.find(r => r.sid === s.id && r.date === today && r.in);
+            if (exists) return msg('msg', 'Already clocked in', 'err');
+
+            const time = new Date().toTimeString().split(' ')[0].slice(0, 5);
+            app.records.push({ id: Date.now().toString(), sid: s.id, date: today, in: time, out: null });
+            save();
+            sendTG(s.name, 'IN', time);
+            msg('msg', `✅ ${s.name} clocked in at ${time}`, 'ok');
+            document.getElementById('pin').value = '';
+            setTimeout(render, 1000);
+        }
+
+        function clockOut() {
+            const pin = document.getElementById('pin').value.trim();
+            const s = app.staff.find(x => x.pin === pin);
+            if (!s) return msg('msg', 'Invalid PIN', 'err');
+
+            const today = new Date().toISOString().split('T')[0];
+            const rec = app.records.find(r => r.sid === s.id && r.date === today && r.in && !r.out);
+            if (!rec) return msg('msg', 'No clock in record', 'err');
+
+            const time = new Date().toTimeString().split(' ')[0].slice(0, 5);
+            rec.out = time;
+            save();
+            sendTG(s.name, 'OUT', time);
+            msg('msg', `✅ ${s.name} clocked out at ${time}`, 'ok');
+            document.getElementById('pin').value = '';
+            setTimeout(render, 1000);
+        }
+
+        function addManualEntry() {
+            const staffId = document.getElementById('manual-staff').value;
+            const date = document.getElementById('manual-date').value;
+            const inTime = document.getElementById('manual-in').value;
+            const outTime = document.getElementById('manual-out').value;
+
+            if (!staffId || !date) return msg('manual-msg', 'Select staff and date', 'err');
+            if (!inTime) return msg('manual-msg', 'Clock in time is required', 'err');
+
+            const staff = app.staff.find(s => s.id === staffId);
+            if (!staff) return msg('manual-msg', 'Invalid staff', 'err');
+
+            // Check if record already exists for this staff on this date
+            const exists = app.records.find(r => r.sid === staffId && r.date === date);
+            if (exists) return msg('manual-msg', 'Record already exists for this date', 'err');
+
+            app.records.push({
+                id: Date.now().toString(),
+                sid: staffId,
+                date: date,
+                in: inTime,
+                out: outTime || null
+            });
+
+            save();
+            msg('manual-msg', `✅ Manual entry added for ${staff.name}`, 'ok');
+            
+            // Clear form
+            document.getElementById('manual-staff').value = '';
+            document.getElementById('manual-in').value = '';
+            document.getElementById('manual-out').value = '';
+            
+            setTimeout(render, 1500);
+        }
+
+        function markAttendanceStatus() {
+            const staffId = document.getElementById('status-staff').value;
+            const date = document.getElementById('status-date').value;
+            const status = document.getElementById('status-type').value;
+
+            if (!staffId || !date || !status) return msg('status-msg', 'Fill all fields', 'err');
+
+            const staff = app.staff.find(s => s.id === staffId);
+            if (!staff) return msg('status-msg', 'Invalid staff', 'err');
+
+            // Check if record already exists for this staff on this date
+            const exists = app.records.find(r => r.sid === staffId && r.date === date);
+            if (exists) return msg('status-msg', 'Record already exists for this date', 'err');
+
+            const statusLabels = {
+                rest: 'Rest Day',
+                absent: 'Absent',
+                leave: 'Leave'
+            };
+
+            app.records.push({
+                id: Date.now().toString(),
+                sid: staffId,
+                date: date,
+                status: status,
+                in: null,
+                out: null
+            });
+
+            save();
+            msg('status-msg', `✅ Marked ${staff.name} as ${statusLabels[status]}`, 'ok');
+            
+            // Clear form
+            document.getElementById('status-staff').value = '';
+            document.getElementById('status-type').value = '';
+            
+            setTimeout(render, 1500);
+        }
+
+        function deleteRecord(recordId) {
+            if (!confirm('Delete this record?')) return;
+            app.records = app.records.filter(r => r.id !== recordId);
+            save();
+            render();
+        }
+
+        // Deduction Functions
+        function addDeduction() {
+            const staffId = document.getElementById('ded-staff').value;
+            const label = document.getElementById('ded-label').value.trim();
+            const amount = parseFloat(document.getElementById('ded-amount').value);
+
+            if (!staffId) return msg('ded-msg', 'Please select a staff member', 'err');
+            if (!label) return msg('ded-msg', 'Please enter a deduction label', 'err');
+            if (!amount || amount <= 0) return msg('ded-msg', 'Please enter a valid amount', 'err');
+
+            const staff = app.staff.find(s => s.id === staffId);
+            if (!staff) return msg('ded-msg', 'Invalid staff selected', 'err');
+
+            app.deductions.push({
+                id: Date.now().toString(),
+                sid: staffId,
+                label: label,
+                amt: amount
+            });
+
+            save();
+            msg('ded-msg', `✅ Deduction added for ${staff.name}`, 'ok');
+
+            // Clear form
+            document.getElementById('ded-staff').value = '';
+            document.getElementById('ded-label').value = '';
+            document.getElementById('ded-amount').value = '';
+
+            setTimeout(render, 1500);
+        }
+
+        function deleteDeduction(deductionId) {
+            if (!confirm('Remove this deduction?')) return;
+            app.deductions = app.deductions.filter(d => d.id !== deductionId);
+            save();
+            render();
+        }
+
+        // Payroll Functions
+        function setPeriod() {
+            app.start = document.getElementById('ps').value;
+            app.end = document.getElementById('pe').value;
+            if (!app.start || !app.end) return msg('pm', 'Set both dates', 'err');
+            save();
+            msg('pm', 'Period saved!', 'ok');
+            render();
+        }
+
+        function viewPayslip(sid) {
+            const s = app.staff.find(x => x.id === sid);
+            if (!s) return;
+            if (!app.start || !app.end) return alert('Set pay period first');
+
+            const recs = app.records.filter(r => {
+                const rd = new Date(r.date);
+                return r.sid === sid && rd >= new Date(app.start) && rd <= new Date(app.end);
+            });
+
+            let wd = 0, ot = 0, lateM = 0, restDays = 0, absences = 0, leaves = 0;
+            recs.forEach(r => {
+                // Check if this is a status record (rest, absent, leave)
+                if (r.status === 'rest') {
+                    restDays++;
+                } else if (r.status === 'absent') {
+                    absences++;
+                } else if (r.status === 'leave') {
+                    leaves++;
+                } else {
+                    // Normal work day calculation
+                    const h = calcH(r.in, r.out);
+                    if (h >= 9.5) wd++;
+                    ot += calcOT(r.out);
+                    lateM += calcLate(r.in);
+                }
+            });
+
+            const rt = RATES[s.position];
+            const gross = (wd * rt.daily) + (ot * rt.ot);
+            const lp = (lateM / 60) * (rt.daily / 9.5);
+            const deds = app.deductions.filter(d => d.sid === sid);
+            const totDed = deds.reduce((sum, d) => sum + d.amt, 0) + lp;
+            const net = gross - totDed;
+
+            document.getElementById('view').innerHTML = `
+                <button onclick="render()" style="margin-bottom:20px;background:#9C27B0;color:white">← Back</button>
+                <h2 style="text-align:center;margin-bottom:10px">${s.name}</h2>
+                <p style="text-align:center;color:#666;margin-bottom:30px">${s.position === 'regular' ? 'Regular Staff' : s.position === 'senior' ? 'Senior Staff' : 'Trainee'}</p>
+                <div style="background:#f9f9f9;padding:15px;border-radius:6px;margin-bottom:20px">
+                    <strong>Period:</strong> ${app.start} to ${app.end}
+                </div>
+                
+                ${(restDays > 0 || absences > 0 || leaves > 0) ? `
+                    <div style="background:#fff3cd;padding:15px;border-radius:6px;margin-bottom:20px;border-left:4px solid #FF9800">
+                        <strong>📋 Attendance Summary</strong><br>
+                        ${restDays > 0 ? `<small>🏖️ Rest Days: ${restDays}</small><br>` : ''}
+                        ${leaves > 0 ? `<small>🏥 Leaves: ${leaves}</small><br>` : ''}
+                        ${absences > 0 ? `<small>❌ Absences: ${absences}</small>` : ''}
+                    </div>
+                ` : ''}
+                
+                <h3 style="border-bottom:2px solid #333;padding-bottom:5px;margin-bottom:15px">Earnings</h3>
+                <div style="display:flex;justify-content:space-between;padding:12px;border-bottom:1px solid #ddd"><span>Days Worked</span><span>${wd}</span></div>
+                <div style="display:flex;justify-content:space-between;padding:12px;border-bottom:1px solid #ddd"><span>Daily Rate</span><span>₱${rt.daily}</span></div>
+                <div style="display:flex;justify-content:space-between;padding:12px;border-bottom:1px solid #ddd"><span>Overtime (${ot}h)</span><span>₱${(ot * rt.ot).toFixed(2)}</span></div>
+                <div style="display:flex;justify-content:space-between;padding:12px;border-bottom:1px solid #ddd"><span>Late</span><span style="color:#f44336">-₱${lp.toFixed(2)}</span></div>
+                <div style="display:flex;justify-content:space-between;padding:15px;background:#f5f5f5;font-weight:bold;border:2px solid #333;margin:10px 0"><span>GROSS</span><span>₱${gross.toFixed(2)}</span></div>
+                <h3 style="border-bottom:2px solid #333;padding-bottom:5px;margin-top:30px">Deductions</h3>
+                ${deds.map(d => `<div style="display:flex;justify-content:space-between;padding:12px;border-bottom:1px solid #ddd"><span>${d.label}</span><span style="color:#f44336">₱${d.amt.toFixed(2)}</span></div>`).join('')}
+                <div style="display:flex;justify-content:space-between;padding:15px;background:#f5f5f5;font-weight:bold;border:2px solid #333;margin:10px 0"><span>TOTAL DED</span><span style="color:#f44336">₱${totDed.toFixed(2)}</span></div>
+                <div style="display:flex;justify-content:space-between;padding:15px;background:#E8F5E9;font-weight:bold;font-size:20px;border:2px solid #333;margin:20px 0"><span>NET PAY</span><span style="color:#4CAF50">₱${net.toFixed(2)}</span></div>
+                <div class="no-print" style="text-align:center;margin-top:20px"><button onclick="window.print()" style="background:#9C27B0;color:white;padding:12px 24px;border:none;border-radius:4px;cursor:pointer">🖨️ Print</button></div>
+            `;
+        }
+
+        function calcH(inT, outT) {
+            if (!inT || !outT) return 0;
+            const [ih, im] = inT.split(':').map(Number);
+            const [oh, om] = outT.split(':').map(Number);
+            const inm = ih * 60 + im, outm = oh * 60 + om;
+            const total = outm < inm ? (outm + 1440) - inm : outm - inm;
+            return Math.max(0, (total - 60) / 60);
+        }
+
+        function calcLate(inT) {
+            if (!inT) return 0;
+            const [ih, im] = inT.split(':').map(Number);
+            return Math.max(0, (ih * 60 + im) - (7 * 60 + 30 + 5));
+        }
+
+        function calcOT(outT) {
+            if (!outT) return 0;
+            const [oh, om] = outT.split(':').map(Number);
+            return (oh * 60 + om) >= (19 * 60 + 30) ? 1 : 0;
+        }
+
+        function saveTG() {
+            const on = document.getElementById('te').value === '1', token = document.getElementById('tt').value.trim(), id = document.getElementById('ti').value.trim();
+            if (on && (!token || !id)) return msg('tm', 'Fill all', 'err');
+            localStorage.setItem('tg', JSON.stringify({on, token, id}));
+            msg('tm', 'Saved!', 'ok');
+        }
+
+        async function testTG() {
+            const token = document.getElementById('tt').value.trim(), id = document.getElementById('ti').value.trim();
+            if (!token || !id) return msg('tm', 'Fill all', 'err');
+            try {
+                await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({chat_id: id, text: '✅ Test from SRDS'})
+                });
+                msg('tm', 'Sent!', 'ok');
+            } catch(e) {
+                msg('tm', 'Failed', 'err');
+            }
+        }
+
+        async function sendTG(name, type, time) {
+            const tg = JSON.parse(localStorage.getItem('tg')) || {on:false};
+            if (!tg.on) return;
+            try {
+                const emoji = type === 'IN' ? '🟢' : '🔴';
+                const txt = `${emoji} <b>${name}</b> ${type === 'IN' ? 'clocked in' : 'clocked out'} at ${time}`;
+                await fetch(`https://api.telegram.org/bot${tg.token}/sendMessage`, {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({chat_id: tg.id, text: txt, parse_mode: 'HTML'})
+                });
+            } catch(e) {}
+        }
+
+        function authDevice() {
+            const deviceId = document.getElementById('newDevId').value.trim();
+            if (!deviceId) return msg('devMsg', 'Enter device ID', 'err');
+            const authorizedDevices = JSON.parse(localStorage.getItem('authorizedDevices')) || [];
+            if (!authorizedDevices.includes(deviceId)) {
+                authorizedDevices.push(deviceId);
+                localStorage.setItem('authorizedDevices', JSON.stringify(authorizedDevices));
+            }
+            document.getElementById('newDevId').value = '';
+            msg('devMsg', 'Device authorized!', 'ok');
+        }
+
+        function expXL() {
+            if (app.records.length === 0) return msg('em', 'No data', 'err');
+            const rows = [['Date','Staff','Login','Logout','Hours','Status']];
+            app.records.forEach(r => {
+                const s = app.staff.find(x => x.id === r.sid);
+                const statusLabels = { rest: 'Rest Day', absent: 'Absent', leave: 'Leave' };
+                const status = r.status ? statusLabels[r.status] : '-';
+                if (s) rows.push([r.date, s.name, r.in||'-', r.out||'-', r.status ? '-' : calcH(r.in, r.out).toFixed(2), status]);
+            });
+            dl('\uFEFF' + rows.map(row => row.map(c => `"${c}"`).join(',')).join('\n'), 'Records.csv', 'text/csv;charset=utf-8');
+            msg('em', 'Downloaded!', 'ok');
+        }
+
+        function expCSV() {
+            if (app.records.length === 0) return msg('em', 'No data', 'err');
+            const rows = [['Date','Staff','Login','Logout','Status'].join(',')];
+            app.records.forEach(r => {
+                const s = app.staff.find(x => x.id === r.sid);
+                const statusLabels = { rest: 'Rest Day', absent: 'Absent', leave: 'Leave' };
+                const status = r.status ? statusLabels[r.status] : '-';
+                if (s) rows.push([r.date, `"${s.name}"`, r.in||'-', r.out||'-', status].join(','));
+            });
+            dl(rows.join('\n'), 'DTR.csv', 'text/csv');
+            msg('em', 'Downloaded!', 'ok');
+        }
+
+        function expPay() {
+            if (!app.start || !app.end) return msg('em', 'Set dates', 'err');
+            const rows = [['Staff','Days','Net']];
+            app.staff.forEach(s => {
+                const recs = app.records.filter(r => {
+                    const rd = new Date(r.date);
+                    return r.sid === s.id && rd >= new Date(app.start) && rd <= new Date(app.end);
+                });
+                let wd=0;
+                recs.forEach(r => {
+                    // Only count work days, not rest/absent/leave
+                    if (!r.status) {
+                        const h = calcH(r.in, r.out);
+                        if (h >= 9.5) wd++;
+                    }
+                });
+                const rt = RATES[s.position];
+                const gross = wd * rt.daily;
+                rows.push([s.name, wd, gross.toFixed(2)]);
+            });
+            dl('\uFEFF' + rows.map(r => r.join(',')).join('\n'), 'Payslip.csv', 'text/csv;charset=utf-8');
+            msg('em', 'Downloaded!', 'ok');
+        }
+
+        function dl(content, filename, type) {
+            const blob = new Blob([content], {type});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function msg(id, txt, cls) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.className = 'msg ' + cls;
+            el.textContent = txt;
+            setTimeout(() => el.textContent = '', 3000);
+        }
+
+        // Initialize app
+        loadData();
+        render();
+        updateAdminStatus();
+    </script>
+</body>
+</html>
