@@ -128,7 +128,7 @@
         let isAdminAuthenticated = false;
         let adminAuthTimeout = null;
         let currentEditingStaffId = null;
-        // let hideAdminTabs = localStorage.getItem('hideAdminTabs') === 'true';
+        let hideAdminTabs = localStorage.getItem('hideAdminTabs') === 'true';
 
         // Device Authorization (kept in localStorage for device-specific auth)
         function getDeviceId() {
