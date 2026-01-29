@@ -98,28 +98,34 @@
     </div>
 
     <script>
-        // Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-import { getAnalytics } from "firebase/analytics";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
+        // ============================================
+        // FIREBASE CONFIGURATION
+        // ============================================
+        // TODO: Replace with your Firebase config
+        // Get this from Firebase Console > Project Settings > Your Apps
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+            databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_PROJECT_ID.appspot.com",
+            messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
 
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const firebaseConfig = {
-  apiKey: "AIzaSyDbeMGD1rdPMoikNh7gqGmHYxzJ3kolBdE",
-  authDomain: "sirramosds-dtrapp.firebaseapp.com",
-  databaseURL: "https://sirramosds-dtrapp-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "sirramosds-dtrapp",
-  storageBucket: "sirramosds-dtrapp.firebasestorage.app",
-  messagingSenderId: "770196503286",
-  appId: "1:770196503286:web:755d13625ba6cb0c8f4ad7",
-  measurementId: "G-R86M2S6BGY"
-};
+        // Initialize Firebase
+        let db = null;
+        let isFirebaseInitialized = false;
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
+        try {
+            firebase.initializeApp(firebaseConfig);
+            db = firebase.database();
+            isFirebaseInitialized = true;
+            console.log('✅ Firebase initialized successfully');
+        } catch (error) {
+            console.error('❌ Firebase initialization failed:', error);
+            console.log('📝 Using localStorage as fallback');
+        }
 
         // Admin Password
         const ADMIN_PASSWORD = "admin123";
