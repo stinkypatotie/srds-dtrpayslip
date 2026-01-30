@@ -1029,7 +1029,7 @@
 
             const rt = RATES[s.position];
             const gross = (wd * rt.daily) + (ot * rt.ot);
-            const lp = (lateM / 60) * (rt.daily / 9.5);
+            const lp = (lateM) * (rt.daily / 9.5);
             const deds = app.deductions.filter(d => d.sid === sid);
             const totDed = deds.reduce((sum, d) => sum + d.amt, 0) + lp;
             const net = gross - totDed;
