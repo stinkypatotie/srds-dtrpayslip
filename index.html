@@ -669,7 +669,7 @@
                         <label>Select Staff</label>
                         <select id="clock-staff" onchange="checkPIN()">
                             <option value="">Choose staff member...</option>
-                            ${app.staff.map(s => `<option value="${s.id}">${s.name} (${s.position})</option>`).join('')}
+                            ${app.staff.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
                         </select>
                     </div>
                     <div class="form-group">
