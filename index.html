@@ -42,6 +42,7 @@
         .admin-badge { background: #FF9800; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; margin-left: 10px; }
         .logout-btn { background: #f44336; color: white; padding: 8px 16px; border-radius: 4px; font-size: 12px; cursor: pointer; border: none; }
         .action-buttons { display: flex; gap: 10px; }
+        .firebase-notice { background: #fff3cd; padding: 15px; border-radius: 4px; margin-bottom: 20px; border-left: 4px solid #FF9800; }
         @media print { .header, .tabs, .no-print { display: none !important; } }
     </style>
 </head>
@@ -53,6 +54,10 @@
                 <div id="admin-status"></div>
             </div>
             <div class="tabs" id="tabs"></div>
+            <div id="admin-login-prompt" style="display: none; margin-top: 15px; padding: 12px; background: #fff3cd; border-radius: 4px; border-left: 4px solid #FF9800;">
+                <span style="color: #856404;">🔒 Admin features are hidden. </span>
+                <button class="btn-warning" onclick="showAdminLogin()" style="padding: 6px 12px; font-size: 13px;">Login as Admin</button>
+            </div>
         </div>
         <div class="content" id="view"></div>
     </div>
@@ -98,7 +103,7 @@
     </div>
 
     <script>
-        // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 			const firebaseConfig = {
 		apiKey: "AIzaSyDbeMGD1rdPMoikNh7gqGmHYxzJ3kolBdE",
 		authDomain: "sirramosds-dtrapp.firebaseapp.com",
@@ -122,6 +127,22 @@
             console.error('❌ Firebase initialization failed:', error);
             console.log('📝 Using localStorage as fallback');
         }
+        // Check if Firebase config is set up
+        const isFirebaseConfigured = !firebaseConfig.apiKey.includes('YOUR_');
+
+        if (isFirebaseConfigured) {
+            try {
+                firebase.initializeApp(firebaseConfig);
+                db = firebase.database();
+                isFirebaseInitialized = true;
+                console.log('✅ Firebase initialized successfully');
+            } catch (error) {
+                console.error('❌ Firebase initialization failed:', error);
+                console.log('📝 Using localStorage as fallback');
+            }
+        } else {
+            console.log('⚠️ Firebase not configured. Using localStorage mode.');
+        }
 
         // Admin Password
         const ADMIN_PASSWORD = "0625Seb1@";
@@ -141,7 +162,7 @@
         }
 
         function checkDeviceAuth() {
-            const authorizedDevices = JSON.parse(localStorage.getItem('authorizedDevices')) || [];
+            const authorizedDevices = JSON.parse(localStorage.getItem('authorizedDevices') || '[]');
             const currentDevice = getDeviceId();
             if (authorizedDevices.length === 0) return true;
             return authorizedDevices.includes(currentDevice);
@@ -149,175 +170,371 @@
 
         function showAuthScreen() {
             const currentDevice = getDeviceId();
+            
+            // Render limited interface for unauthorized devices
             document.body.innerHTML = `
-                <div style="display:flex;justify-content:center;align-items:center;min-height:100vh;background:#f5f5f5">
-                    <div style="background:white;padding:40px;border-radius:8px;box-shadow:0 4px 6px rgba(0,0,0,0.1);max-width:500px;text-align:center">
-                        <h1 style="color:#f44336;margin-bottom:20px">🔒 Device Not Authorized</h1>
-                        <p style="color:#666;margin-bottom:30px">This device is not authorized to access the system.</p>
-                        <div style="background:#f9f9f9;padding:20px;border-radius:6px;margin-bottom:20px">
-                            <p style="font-size:12px;color:#999;margin-bottom:10px">Your Device ID:</p>
-                            <p style="font-family:monospace;font-size:14px;color:#333;word-break:break-all;background:white;padding:10px;border-radius:4px">${currentDevice}</p>
+                <div class="container">
+                    <div class="header">
+                        <h1>Sir Ramos Drugstore</h1>
+                        <div style="background:#fff3cd;padding:10px;border-radius:4px;border-left:4px solid #FF9800;margin-top:15px">
+                            <small style="color:#856404">⚠️ Limited Access Mode - This device is not authorized for admin features</small>
                         </div>
-                        <p style="font-size:14px;color:#666">Contact administrator to authorize this device.</p>
+                    </div>
+                    <div class="content">
+                        <h2>⏰ Clock In/Out</h2>
+                        <div class="status">📅 Today: ${new Date().toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
+                        
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>Select Staff</label>
+                                <select id="clock-staff" onchange="checkPIN()">
+                                    <option value="">Choose staff member...</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>PIN Code</label>
+                                <input type="password" id="clock-pin" placeholder="Enter 4-digit PIN" maxlength="4">
+                            </div>
+                        </div>
+                        
+                        <div class="action-buttons" style="margin-bottom: 20px;">
+                            <button class="btn-primary" onclick="limitedClockIn()">🕐 Clock In</button>
+                            <button class="btn-danger" onclick="limitedClockOut()">🕗 Clock Out</button>
+                        </div>
+                        
+                        <div id="clock-msg"></div>
+                        
+                        <div style="margin-top:40px;padding-top:20px;border-top:1px solid #ddd">
+                            <details style="cursor:pointer">
+                                <summary style="color:#666;font-size:13px;cursor:pointer;user-select:none">
+                                    ℹ️ Device Information
+                                </summary>
+                                <div style="margin-top:15px;padding:15px;background:#f9f9f9;border-radius:6px">
+                                    <p style="margin:0 0 10px 0;font-size:13px"><strong>Your Device ID:</strong></p>
+                                    <div style="display:flex;gap:10px;align-items:center">
+                                        <input type="text" id="device-id-display" value="${currentDevice}" readonly 
+                                            style="flex:1;font-family:monospace;font-size:12px;padding:8px;border:1px solid #ddd;border-radius:4px;background:white">
+                                        <button onclick="copyDeviceId()" style="background:#2196F3;color:white;padding:8px 16px;border:none;border-radius:4px;cursor:pointer;font-size:12px">
+                                            📋 Copy
+                                        </button>
+                                    </div>
+                                    <p style="margin:10px 0 0 0;font-size:12px;color:#666">
+                                        To access admin features, share this Device ID with your administrator for authorization.
+                                    </p>
+                                </div>
+                            </details>
+                        </div>
                     </div>
                 </div>
+
+                <script>
+                    const currentDeviceId = "${currentDevice}";
+                    let staffList = [];
+                    
+                    // Check if Firebase is available
+                    const isFirebaseAvailable = typeof firebase !== 'undefined' && firebase.database;
+                    const isFirebaseInitialized = isFirebaseAvailable && firebase.apps.length > 0;
+                    // Firebase config check
+                    
+                    // Load staff from Firebase or localStorage
+                    function loadStaffForLimited() {
+                        if (isFirebaseInitialized) {
+                            firebase.database().ref('staff').on('value', (snapshot) => {
+                                staffList = snapshot.val() || [];
+                                updateStaffDropdown();
+                            });
+                        } else {
+                            staffList = JSON.parse(localStorage.getItem('staff')) || [];
+                            updateStaffDropdown();
+                        }
+                    }
+                    
+                    function updateStaffDropdown() {
+                        const select = document.getElementById('clock-staff');
+                        select.innerHTML = '<option value="">Choose staff member...</option>' +
+                            staffList.map(s => 
+                                '<option value="' + s.id + '">' + s.name + ' (' + s.position + ')</option>'
+                            ).join('');
+                    }
+                    
+                    function checkPIN() {
+                        document.getElementById('clock-pin').value = '';
+                        document.getElementById('clock-pin').focus();
+                    }
+                    
+                    function limitedClockIn() {
+                        const staffId = document.getElementById('clock-staff').value;
+                        const pin = document.getElementById('clock-pin').value.trim();
+                        
+                        if (!staffId) {
+                            showMsg('❌ Please select a staff member', 'err');
+                            return;
+                        }
+                        
+                        if (!pin) {
+                            showMsg('❌ Please enter PIN', 'err');
+                            return;
+                        }
+                        
+                        const staff = staffList.find(s => s.id === staffId);
+                        if (!staff || staff.pin !== pin) {
+                            showMsg('❌ Invalid PIN', 'err');
+                            document.getElementById('clock-pin').value = '';
+                            return;
+                        }
+                        
+                        const today = new Date().toISOString().split('T')[0];
+                        const time = new Date().toTimeString().split(' ')[0].substring(0, 5);
+                        
+                        const record = {
+                            id: Date.now().toString(),
+                            staffId: staffId,
+                            date: today,
+                            timeIn: time,
+                            timeOut: null,
+                            status: null
+                        };
+                        
+                        if (isFirebaseInitialized) {
+                            // Check if already clocked in
+                            firebase.database().ref('records').once('value', (snapshot) => {
+                                const records = snapshot.val() || [];
+                                const alreadyIn = records.find(r => 
+                                    r.staffId === staffId && r.date === today && r.timeIn && !r.timeOut
+                                );
+                                
+                                if (alreadyIn) {
+                                    showMsg('⚠️ Already clocked in today', 'err');
+                                    return;
+                                }
+                                
+                                // Add new record
+                                const newRecords = [...records, record];
+                                firebase.database().ref('records').set(newRecords)
+                                    .then(() => {
+                                        showMsg('✅ ' + staff.name + ' clocked in at ' + time, 'ok');
+                                        document.getElementById('clock-staff').value = '';
+                                        document.getElementById('clock-pin').value = '';
+                                    })
+                                    .catch(err => showMsg('❌ Error: ' + err.message, 'err'));
+                            });
+                        } else {
+                            const records = JSON.parse(localStorage.getItem('records')) || [];
+                            const alreadyIn = records.find(r => 
+                                r.staffId === staffId && r.date === today && r.timeIn && !r.timeOut
+                            );
+                            
+                            if (alreadyIn) {
+                                showMsg('⚠️ Already clocked in today', 'err');
+                                return;
+                            }
+                            
+                            records.push(record);
+                            localStorage.setItem('records', JSON.stringify(records));
+                            showMsg('✅ ' + staff.name + ' clocked in at ' + time, 'ok');
+                            document.getElementById('clock-staff').value = '';
+                            document.getElementById('clock-pin').value = '';
+                        }
+                    }
+                    
+                    function limitedClockOut() {
+                        const staffId = document.getElementById('clock-staff').value;
+                        const pin = document.getElementById('clock-pin').value.trim();
+                        
+                        if (!staffId) {
+                            showMsg('❌ Please select a staff member', 'err');
+                            return;
+                        }
+                        
+                        if (!pin) {
+                            showMsg('❌ Please enter PIN', 'err');
+                            return;
+                        }
+                        
+                        const staff = staffList.find(s => s.id === staffId);
+                        if (!staff || staff.pin !== pin) {
+                            showMsg('❌ Invalid PIN', 'err');
+                            document.getElementById('clock-pin').value = '';
+                            return;
+                        }
+                        
+                        const today = new Date().toISOString().split('T')[0];
+                        const time = new Date().toTimeString().split(' ')[0].substring(0, 5);
+                        
+                        if (isFirebaseInitialized) {
+                            firebase.database().ref('records').once('value', (snapshot) => {
+                                const records = snapshot.val() || [];
+                                const recordIndex = records.findIndex(r => 
+                                    r.staffId === staffId && r.date === today && r.timeIn && !r.timeOut
+                                );
+                                
+                                if (recordIndex === -1) {
+                                    showMsg('❌ No clock in record found', 'err');
+                                    return;
+                                }
+                                
+                                records[recordIndex].timeOut = time;
+                                firebase.database().ref('records').set(records)
+                                    .then(() => {
+                                        showMsg('✅ ' + staff.name + ' clocked out at ' + time, 'ok');
+                                        document.getElementById('clock-staff').value = '';
+                                        document.getElementById('clock-pin').value = '';
+                                    })
+                                    .catch(err => showMsg('❌ Error: ' + err.message, 'err'));
+                            });
+                        } else {
+                            const records = JSON.parse(localStorage.getItem('records')) || [];
+                            const record = records.find(r => 
+                                r.staffId === staffId && r.date === today && r.timeIn && !r.timeOut
+                            );
+                            
+                            if (!record) {
+                                showMsg('❌ No clock in record found', 'err');
+                                return;
+                            }
+                            
+                            record.timeOut = time;
+                            localStorage.setItem('records', JSON.stringify(records));
+                            showMsg('✅ ' + staff.name + ' clocked out at ' + time, 'ok');
+                            document.getElementById('clock-staff').value = '';
+                            document.getElementById('clock-pin').value = '';
+                        }
+                    }
+                    
+                    function showMsg(text, type) {
+                        const msgEl = document.getElementById('clock-msg');
+                        msgEl.className = 'msg ' + type;
+                        msgEl.textContent = text;
+                        setTimeout(() => msgEl.textContent = '', 3000);
+                    }
+                    
+                    function copyDeviceId() {
+                        const input = document.getElementById('device-id-display');
+                        input.select();
+                        input.setSelectionRange(0, 99999);
+                        
+                        try {
+                            document.execCommand('copy');
+                            const btn = event.target;
+                            const original = btn.textContent;
+                            btn.textContent = '✅ Copied!';
+                            setTimeout(() => btn.textContent = original, 2000);
+                        } catch (err) {
+                            alert('Device ID: ' + input.value);
+                        }
+                    }
+                    
+                    // Load staff on startup
+                    loadStaffForLimited();
+                </scr' + 'ipt>
             `;
         }
 
+        // Check device authorization on load
         if (!checkDeviceAuth()) {
             showAuthScreen();
-            throw new Error('Unauthorized device');
+            throw new Error('Unauthorized device - halting execution');
         }
 
-        // App State
+        const RATES = {
+            regular: { hourly: 68, daily: 650 },
+            senior: { hourly: 73, daily: 700 },
+            trainee: { hourly: 53, daily: 500 }
+        };
+
         const app = {
             staff: [],
             records: [],
-            deductions: [],
-            start: '',
-            end: '',
-            view: 'dtr'
+            currentView: 'clock',
+            start: null,
+            end: null
         };
 
-        const RATES = { regular: { daily: 650, ot: 68 }, trainee: { daily: 500, ot: 53 }, senior: { daily: 700, ot: 73 } };
-
-        // ============================================
-        // FIREBASE DATABASE FUNCTIONS
-        // ============================================
-        
-        function save() {
+        function saveData() {
             if (isFirebaseInitialized) {
-                // Save to Firebase with error handling
-                const updates = {
-                    staff: app.staff,
-                    records: app.records,
-                    deductions: app.deductions,
-                    settings: {
-                        start: app.start,
-                        end: app.end
-                    }
-                };
-
-                db.ref().update(updates)
-                    .then(() => {
-                        console.log('💾 Data saved to Firebase successfully');
-                    })
-                    .catch((error) => {
-                        console.error('❌ Firebase save error:', error);
-                        alert('Error saving to database. Check console for details.');
-                    });
+                try {
+                    // Save to Firebase
+                    const updates = {
+                        '/staff': app.staff,
+                        '/records': app.records
+                    };
+                    db.ref().update(updates)
+                        .then(() => console.log('✅ Data saved to Firebase'))
+                        .catch(err => {
+                            console.error('Firebase save error:', err);
+                            // Fallback to localStorage
+                            localStorage.setItem('staff', JSON.stringify(app.staff));
+                            localStorage.setItem('records', JSON.stringify(app.records));
+                        });
+                } catch (error) {
+                    console.error('Error saving to Firebase:', error);
+                    localStorage.setItem('staff', JSON.stringify(app.staff));
+                    localStorage.setItem('records', JSON.stringify(app.records));
+                }
             } else {
-                // Fallback to localStorage
+                // Save to localStorage
                 localStorage.setItem('staff', JSON.stringify(app.staff));
                 localStorage.setItem('records', JSON.stringify(app.records));
-                localStorage.setItem('deductions', JSON.stringify(app.deductions));
-                localStorage.setItem('start', app.start);
-                localStorage.setItem('end', app.end);
-                console.log('💾 Data saved to localStorage (fallback)');
             }
         }
 
         function loadData() {
             if (isFirebaseInitialized) {
                 // Load from Firebase
-                console.log('📥 Loading data from Firebase...');
-                
-                // Load staff
-                db.ref('staff').on('value', (snapshot) => {
-                    const data = snapshot.val();
-                    if (data) {
-                        // Convert object to array if needed
-                        app.staff = Array.isArray(data) ? data : Object.values(data);
-                    } else {
-                        app.staff = [];
-                    }
-                    console.log('✅ Staff loaded:', app.staff.length, 'records');
-                    render();
-                }, (error) => {
-                    console.error('❌ Error loading staff:', error);
-                });
-
-                // Load records
-                db.ref('records').on('value', (snapshot) => {
-                    const data = snapshot.val();
-                    if (data) {
-                        app.records = Array.isArray(data) ? data : Object.values(data);
-                    } else {
-                        app.records = [];
-                    }
-                    console.log('✅ Records loaded:', app.records.length, 'entries');
-                    render();
-                }, (error) => {
-                    console.error('❌ Error loading records:', error);
-                });
-
-                // Load deductions
-                db.ref('deductions').on('value', (snapshot) => {
-                    const data = snapshot.val();
-                    if (data) {
-                        app.deductions = Array.isArray(data) ? data : Object.values(data);
-                    } else {
-                        app.deductions = [];
-                    }
-                    console.log('✅ Deductions loaded:', app.deductions.length, 'items');
-                    render();
-                }, (error) => {
-                    console.error('❌ Error loading deductions:', error);
-                });
-
-                // Load settings
-                db.ref('settings').on('value', (snapshot) => {
-                    const settings = snapshot.val() || {};
-                    app.start = settings.start || '';
-                    app.end = settings.end || '';
-                    console.log('✅ Settings loaded');
-                    render();
-                }, (error) => {
-                    console.error('❌ Error loading settings:', error);
-                });
-
-                // Test database write permission
-                db.ref('.info/connected').on('value', (snapshot) => {
-                    if (snapshot.val() === true) {
-                        console.log('✅ Connected to Firebase');
-                    } else {
-                        console.log('⚠️ Disconnected from Firebase');
-                    }
-                });
+                db.ref('/staff').once('value')
+                    .then(snapshot => {
+                        app.staff = snapshot.val() || [];
+                        return db.ref('/records').once('value');
+                    })
+                    .then(snapshot => {
+                        app.records = snapshot.val() || [];
+                        console.log('✅ Data loaded from Firebase');
+                        render();
+                    })
+                    .catch(err => {
+                        console.error('Firebase load error:', err);
+                        // Fallback to localStorage
+                        app.staff = JSON.parse(localStorage.getItem('staff') || '[]');
+                        app.records = JSON.parse(localStorage.getItem('records') || '[]');
+                        render();
+                    });
             } else {
-                // Fallback to localStorage
-                app.staff = JSON.parse(localStorage.getItem('staff')) || [];
-                app.records = JSON.parse(localStorage.getItem('records')) || [];
-                app.deductions = JSON.parse(localStorage.getItem('deductions')) || [];
-                app.start = localStorage.getItem('start') || '';
-                app.end = localStorage.getItem('end') || '';
-                console.log('📥 Data loaded from localStorage (fallback)');
+                // Load from localStorage
+                app.staff = JSON.parse(localStorage.getItem('staff') || '[]');
+                app.records = JSON.parse(localStorage.getItem('records') || '[]');
             }
         }
 
-        // Admin Authentication
-        function requireAdmin(callback) {
-            if (isAdminAuthenticated) {
-                resetAdminTimeout();
-                callback();
-                return;
-            }
-            showAuthModal(callback);
+        function calcH(inTime, outTime) {
+            if (!inTime || !outTime) return 0;
+            const [ih, im] = inTime.split(':').map(Number);
+            const [oh, om] = outTime.split(':').map(Number);
+            return ((oh * 60 + om) - (ih * 60 + im)) / 60;
         }
 
-        function showAuthModal(callback) {
+        function showAdminLogin() {
+            app.pendingAdminView = 'staff'; // Default to staff view after login
             document.getElementById('auth-modal').style.display = 'flex';
             document.getElementById('admin-password').value = '';
             document.getElementById('auth-error').textContent = '';
-            window.pendingAdminCallback = callback;
-            document.getElementById('admin-password').addEventListener('keypress', function(e) {
-                if (e.key === 'Enter') verifyPassword();
-            });
+            setTimeout(() => document.getElementById('admin-password').focus(), 100);
         }
 
-        function closeAuthModal() {
-            document.getElementById('auth-modal').style.display = 'none';
-            window.pendingAdminCallback = null;
+        function nav(view) {
+            if (['staff', 'payroll', 'devices', 'settings', 'export'].includes(view) && !isAdminAuthenticated) {
+                requestAdminAuth(view);
+                return;
+            }
+            app.currentView = view;
+            render();
+        }
+
+        function requestAdminAuth(targetView) {
+            app.pendingAdminView = targetView;
+            document.getElementById('auth-modal').style.display = 'flex';
+            document.getElementById('admin-password').value = '';
+            document.getElementById('auth-error').textContent = '';
+            setTimeout(() => document.getElementById('admin-password').focus(), 100);
         }
 
         function verifyPassword() {
@@ -325,577 +542,406 @@
             if (password === ADMIN_PASSWORD) {
                 isAdminAuthenticated = true;
                 closeAuthModal();
+                
+                // Set timeout to auto-logout after 30 minutes
+                if (adminAuthTimeout) clearTimeout(adminAuthTimeout);
+                adminAuthTimeout = setTimeout(() => {
+                    isAdminAuthenticated = false;
+                    updateAdminStatus();
+                    if (['staff', 'payroll', 'devices', 'settings', 'export'].includes(app.currentView)) {
+                        nav('clock');
+                    }
+                }, 30 * 60 * 1000);
+                
                 updateAdminStatus();
-                resetAdminTimeout();
-                if (window.pendingAdminCallback) {
-                    window.pendingAdminCallback();
-                    window.pendingAdminCallback = null;
+                
+                if (app.pendingAdminView) {
+                    app.currentView = app.pendingAdminView;
+                    app.pendingAdminView = null;
                 }
+                render();
             } else {
                 document.getElementById('auth-error').textContent = '❌ Incorrect password';
             }
         }
 
-        function resetAdminTimeout() {
-            if (adminAuthTimeout) clearTimeout(adminAuthTimeout);
-            adminAuthTimeout = setTimeout(() => {
-                isAdminAuthenticated = false;
-                updateAdminStatus();
-                alert('Admin session expired due to inactivity');
-            }, 600000);
-        }
-
-        function logout() {
-            isAdminAuthenticated = false;
-            if (adminAuthTimeout) clearTimeout(adminAuthTimeout);
-            updateAdminStatus();
-            render();
-        }
-
-        // Admin UI Toggle
-        function toggleAdminUI() {
-            hideAdminTabs = !hideAdminTabs;
-            localStorage.setItem('hideAdminTabs', String(hideAdminTabs));
-            if (hideAdminTabs && app.view !== 'dtr') {
-                app.view = 'dtr';
-            }
-            updateAdminStatus();
-            render();
+        function closeAuthModal() {
+            document.getElementById('auth-modal').style.display = 'none';
+            app.pendingAdminView = null;
         }
 
         function updateAdminStatus() {
-            const statusDiv = document.getElementById('admin-status');
-            
-            // Firebase status indicator
-            const firebaseStatus = isFirebaseInitialized 
-                ? '<span style="background:#4CAF50;color:white;padding:4px 8px;border-radius:4px;font-size:11px;margin-right:10px">🔥 Firebase Connected</span>'
-                : '<span style="background:#FF9800;color:white;padding:4px 8px;border-radius:4px;font-size:11px;margin-right:10px">⚠️ Using Local Storage</span>';
+            const statusEl = document.getElementById('admin-status');
+            if (!statusEl) return;
             
             if (isAdminAuthenticated) {
-                statusDiv.innerHTML = `
+                statusEl.innerHTML = `
                     <div style="display: flex; align-items: center; gap: 10px;">
-                        ${firebaseStatus}
                         <span class="admin-badge">👤 Admin Mode</span>
-                        <button style="background: ${hideAdminTabs ? '#4CAF50' : '#FF9800'}; color: white; padding: 8px 16px; border-radius: 4px; font-size: 12px; cursor: pointer; border: none;" onclick="toggleAdminUI()">
-                            ${hideAdminTabs ? '👁️ Show Tabs' : '👁️‍🗨️ Hide Tabs'}
-                        </button>
-                        <button class="logout-btn" onclick="logout()">Logout</button>
+                        <button class="logout-btn" onclick="logoutAdmin()">Logout</button>
                     </div>
                 `;
             } else {
-                statusDiv.innerHTML = firebaseStatus;
+                statusEl.innerHTML = '';
             }
         }
 
-        // Edit Employee Functions
-        function showEditModal(staffId) {
-            const staff = app.staff.find(s => s.id === staffId);
-            if (!staff) return;
-
-            currentEditingStaffId = staffId;
-            document.getElementById('edit-name').value = staff.name;
-            document.getElementById('edit-position').value = staff.position;
-            document.getElementById('edit-pin').value = staff.pin;
-            document.getElementById('edit-modal').style.display = 'flex';
-            document.getElementById('edit-msg').style.display = 'none';
-        }
-
-        function closeEditModal() {
-            document.getElementById('edit-modal').style.display = 'none';
-            currentEditingStaffId = null;
-        }
-
-        function saveEmployeeUpdate() {
-            const name = document.getElementById('edit-name').value.trim();
-            const position = document.getElementById('edit-position').value;
-            const pin = document.getElementById('edit-pin').value.trim();
-
-            if (!name || !pin) {
-                showEditMessage('Please fill all fields', 'err');
-                return;
+        function logoutAdmin() {
+            isAdminAuthenticated = false;
+            if (adminAuthTimeout) {
+                clearTimeout(adminAuthTimeout);
+                adminAuthTimeout = null;
             }
-
-            if (pin.length !== 4 || !/^\d+$/.test(pin)) {
-                showEditMessage('PIN must be 4 digits', 'err');
-                return;
-            }
-
-            // Check if PIN is already used by another employee
-            const pinExists = app.staff.some(s => s.pin === pin && s.id !== currentEditingStaffId);
-            if (pinExists) {
-                showEditMessage('PIN already in use', 'err');
-                return;
-            }
-
-            // Update the staff member
-            const staffIndex = app.staff.findIndex(s => s.id === currentEditingStaffId);
-            if (staffIndex !== -1) {
-                app.staff[staffIndex].name = name;
-                app.staff[staffIndex].position = position;
-                app.staff[staffIndex].pin = pin;
-                save();
-                showEditMessage('Employee updated successfully!', 'ok');
-                setTimeout(() => {
-                    closeEditModal();
-                    render();
-                }, 1500);
+            updateAdminStatus();
+            if (['staff', 'devices', 'settings', 'export'].includes(app.currentView)) {
+                nav('clock');
+            } else {
+                render();
             }
         }
 
-        function showEditMessage(text, type) {
-            const msgEl = document.getElementById('edit-msg');
-            msgEl.textContent = text;
-            msgEl.className = 'msg ' + type;
-            msgEl.style.display = 'block';
-        }
-
-        // Render Functions
         function render() {
             const tabs = [
-                { id: 'dtr', name: 'DTR' },
-                { id: 'staff', name: '👤 Staff', admin: true },
-                { id: 'deductions', name: '💸 Deductions', admin: true },
-                { id: 'pay', name: '💰 Payroll', admin: true },
-                { id: 'export', name: '📊 Export', admin: true },
-                { id: 'tg', name: '📱 Telegram', admin: true },
-                { id: 'device', name: '🔐 Devices', admin: true }
+                { id: 'clock', label: '🕐 Clock In/Out', admin: false },
+                { id: 'records', label: '📋 Records', admin: false },
+                { id: 'staff', label: '👥 Staff', admin: true },
+                { id: 'devices', label: '📱 Devices', admin: true },
+                { id: 'payroll', label: '💰 Payroll', admin: true },
+                { id: 'export', label: '📊 Export', admin: true },
+                { id: 'settings', label: '⚙️ Settings', admin: true }
             ];
 
-            // Filter tabs based on hideAdminTabs setting
-            const visibleTabs = hideAdminTabs ? tabs.filter(t => !t.admin) : tabs;
+            const tabsHtml = tabs
+                .filter(t => !hideAdminTabs || !t.admin || isAdminAuthenticated)
+                .map(t => {
+                    const isLocked = t.admin && !isAdminAuthenticated;
+                    const lockIcon = isLocked ? '<span class="lock">🔒</span>' : '';
+                    return `<button class="tab ${app.currentView === t.id ? 'active' : ''}" onclick="nav('${t.id}')">${t.label}${lockIcon}</button>`;
+                }).join('');
 
-            document.getElementById('tabs').innerHTML = visibleTabs.map(t => {
-                const locked = t.admin && !isAdminAuthenticated;
-                return `<button class="tab ${app.view === t.id ? 'active' : ''}" 
-                    onclick="${locked ? 'requireAdmin(() => switchView(\'' + t.id + '\'))' : 'switchView(\'' + t.id + '\')'}"
-                    ${locked ? 'style="cursor:not-allowed"' : ''}>
-                    ${t.name} ${locked ? '<span class="lock">🔒</span>' : ''}
-                </button>`;
-            }).join('');
+            document.getElementById('tabs').innerHTML = tabsHtml;
 
-            const views = { dtr: renderDTR, staff: renderStaff, deductions: renderDeductions, pay: renderPay, export: renderExport, tg: renderTG, device: renderDevice };
-            views[app.view]();
+            // Show admin login prompt if tabs are hidden and not authenticated
+            const loginPrompt = document.getElementById('admin-login-prompt');
+            if (loginPrompt) {
+                loginPrompt.style.display = (hideAdminTabs && !isAdminAuthenticated) ? 'block' : 'none';
+            }
+
+            const views = {
+                clock: renderClock,
+                records: renderRecords,
+                staff: renderStaff,
+                payroll: renderPayroll,
+                devices: renderDevices,
+                export: renderExport,
+                settings: renderSettings
+            };
+
+            const viewEl = document.getElementById('view');
+            
+            // Show Firebase notice if not configured
+            let firebaseNotice = '';
+            if (!isFirebaseConfigured && ['staff', 'devices', 'settings'].includes(app.currentView)) {
+                firebaseNotice = `
+                    <div class="firebase-notice">
+                        <strong>⚠️ Firebase Not Configured</strong><br>
+                        This app is running in localStorage mode. Data is stored locally on this device only.<br>
+                        To enable cloud sync across devices, configure Firebase in the code (see instructions in source).
+                    </div>
+                `;
+            }
+            
+            viewEl.innerHTML = firebaseNotice + (views[app.currentView] ? views[app.currentView]() : '');
         }
 
-        function switchView(v) {
-            app.view = v;
-            render();
-        }
-
-        function renderDTR() {
+        function renderClock() {
             const today = new Date().toISOString().split('T')[0];
-            const todayRecs = app.records.filter(r => r.date === today);
-
-            document.getElementById('view').innerHTML = `
-                <h2>Daily Time Record</h2>
-                <div class="status">
-                    <strong>📅 Today:</strong> ${new Date().toLocaleDateString('en-US', {weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'})}
-                </div>
-                <div class="form-grid">
-                    <div class="form-group">
-                        <label>Enter PIN</label>
-                        <input type="password" id="pin" placeholder="4-digit PIN" maxlength="4">
-                    </div>
-                </div>
-                <div style="display:flex;gap:10px;margin-bottom:20px">
-                    <button class="btn-primary" onclick="clockIn()">⏰ Clock In</button>
-                    <button class="btn-danger" onclick="clockOut()">⏰ Clock Out</button>
-                </div>
-                <div id="msg"></div>
+            
+            return `
+                <h2>⏰ Clock In/Out</h2>
+                <div class="status">📅 Today: ${new Date().toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
                 
-                ${isAdminAuthenticated ? `
-                    <div style="border-top:2px solid #ddd;margin-top:30px;padding-top:30px">
-                        <h3 style="margin-bottom:20px">🔧 Admin Controls</h3>
-                        
-                        <div style="background:#fff3cd;padding:15px;border-radius:6px;margin-bottom:20px;border-left:4px solid #FF9800">
-                            <strong>⚠️ Manual Entry</strong>
-                        </div>
-                        
-                        <div class="form-grid">
-                            <div class="form-group">
-                                <label>Select Staff</label>
-                                <select id="manual-staff">
-                                    <option value="">-- Select Staff --</option>
-                                    ${app.staff.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>Date</label>
-                                <input type="date" id="manual-date" value="${today}">
-                            </div>
-                            <div class="form-group">
-                                <label>Clock In Time</label>
-                                <input type="time" id="manual-in">
-                            </div>
-                            <div class="form-group">
-                                <label>Clock Out Time</label>
-                                <input type="time" id="manual-out">
-                            </div>
-                        </div>
-                        <button class="btn-primary" onclick="addManualEntry()">➕ Add Manual Entry</button>
-                        <div id="manual-msg"></div>
-                        
-                        <div style="border-top:2px solid #ddd;margin-top:30px;padding-top:20px">
-                            <div style="background:#fff3cd;padding:15px;border-radius:6px;margin-bottom:20px;border-left:4px solid #FF9800">
-                                <strong>📋 Mark Attendance Status</strong>
-                            </div>
-                            
-                            <div class="form-grid">
-                                <div class="form-group">
-                                    <label>Select Staff</label>
-                                    <select id="status-staff">
-                                        <option value="">-- Select Staff --</option>
-                                        ${app.staff.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
-                                    </select>
-                                </div>
-                                <div class="form-group">
-                                    <label>Date</label>
-                                    <input type="date" id="status-date" value="${today}">
-                                </div>
-                                <div class="form-group">
-                                    <label>Status</label>
-                                    <select id="status-type">
-                                        <option value="">-- Select Status --</option>
-                                        <option value="rest">🏖️ Rest Day</option>
-                                        <option value="absent">❌ Absent</option>
-                                        <option value="leave">🏥 Leave</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <button class="btn-primary" onclick="markAttendanceStatus()">💾 Mark Status</button>
-                            <div id="status-msg"></div>
-                        </div>
-                    </div>
-                ` : ''}
-                
-                <h3 style="margin-top:30px;margin-bottom:15px">Today's Logs</h3>
-                ${todayRecs.length === 0 ? '<p style="color:#999">No records yet</p>' : 
-                    todayRecs.map(r => {
-                        const s = app.staff.find(x => x.id === r.sid);
-                        let statusBadge = '';
-                        if (r.status === 'rest') statusBadge = '<span style="background:#4CAF50;color:white;padding:4px 8px;border-radius:4px;font-size:11px;margin-left:10px">🏖️ REST DAY</span>';
-                        else if (r.status === 'absent') statusBadge = '<span style="background:#f44336;color:white;padding:4px 8px;border-radius:4px;font-size:11px;margin-left:10px">❌ ABSENT</span>';
-                        else if (r.status === 'leave') statusBadge = '<span style="background:#FF9800;color:white;padding:4px 8px;border-radius:4px;font-size:11px;margin-left:10px">🏥 LEAVE</span>';
-                        
-                        return `<div class="item">
-                            <div><strong>${s ? s.name : 'Unknown'}</strong>${statusBadge}<br>
-                            <small>${r.status ? 'Status marked' : `In: ${r.in} | Out: ${r.out || 'Not yet'}`}</small></div>
-                            ${isAdminAuthenticated ? `<button class="btn-danger" onclick="deleteRecord('${r.id}')">🗑️</button>` : ''}
-                        </div>`;
-                    }).join('')
-                }
-            `;
-        }
-
-        function renderStaff() {
-            document.getElementById('view').innerHTML = `
-                <h2>Staff Management</h2>
-                <div class="form-grid">
-                    <div class="form-group"><label>Name</label><input id="sn" placeholder="Full Name"></div>
-                    <div class="form-group"><label>Position</label>
-                        <select id="sp">
-                            <option value="regular">Regular Staff</option>
-                            <option value="senior">Senior Staff</option>
-                            <option value="trainee">Trainee</option>
-                        </select>
-                    </div>
-                    <div class="form-group"><label>PIN</label><input id="spin" placeholder="4-digit" maxlength="4"></div>
-                </div>
-                <button class="btn-primary" onclick="addStaff()">➕ Add Staff</button>
-                <div id="sm"></div>
-                <h3 style="margin-top:30px;margin-bottom:15px">Staff List (${app.staff.length})</h3>
-                ${app.staff.length === 0 ? '<p style="color:#999">No staff added</p>' :
-                    app.staff.map(s => `
-                        <div class="item">
-                            <div>
-                                <strong>${s.name}</strong><br>
-                                <small>${s.position === 'regular' ? 'Regular Staff' : s.position === 'senior' ? 'Senior Staff' : 'Trainee'} • PIN: ${s.pin}</small>
-                            </div>
-                            <div class="action-buttons">
-                                <button class="btn-warning" onclick="showEditModal('${s.id}')">✏️ Edit</button>
-                                <button class="btn-danger" onclick="delStaff('${s.id}')">🗑️</button>
-                            </div>
-                        </div>
-                    `).join('')
-                }
-            `;
-        }
-
-        function renderDeductions() {
-            document.getElementById('view').innerHTML = `
-                <h2>Deductions Management</h2>
-                <div class="status">
-                    <strong>💸 Manage salary deductions for staff members</strong>
-                </div>
-                
-                <h3 style="margin-top:30px;margin-bottom:20px">Add New Deduction</h3>
                 <div class="form-grid">
                     <div class="form-group">
                         <label>Select Staff</label>
-                        <select id="ded-staff">
-                            <option value="">-- Select Staff --</option>
-                            ${app.staff.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+                        <select id="clock-staff" onchange="checkPIN()">
+                            <option value="">Choose staff member...</option>
+                            ${app.staff.map(s => `<option value="${s.id}">${s.name} (${s.position})</option>`).join('')}
                         </select>
                     </div>
                     <div class="form-group">
-                        <label>Deduction Label</label>
-                        <input id="ded-label" placeholder="e.g., SSS, PhilHealth, Cash Advance">
-                    </div>
-                    <div class="form-group">
-                        <label>Amount (₱)</label>
-                        <input type="number" id="ded-amount" placeholder="0.00" step="0.01" min="0">
+                        <label>PIN Code</label>
+                        <input type="password" id="clock-pin" placeholder="Enter 4-digit PIN" maxlength="4">
                     </div>
                 </div>
-                <button class="btn-primary" onclick="addDeduction()">➕ Add Deduction</button>
-                <div id="ded-msg"></div>
                 
-                <h3 style="margin-top:40px;margin-bottom:20px">All Deductions</h3>
-                ${app.staff.length === 0 ? '<p style="color:#999">No staff added yet</p>' :
-                    app.staff.map(s => {
-                        const staffDeds = app.deductions.filter(d => d.sid === s.id);
-                        const totalDed = staffDeds.reduce((sum, d) => sum + d.amt, 0);
-                        
-                        return `
-                            <div style="background:#f9f9f9;padding:20px;border-radius:8px;margin-bottom:20px;border-left:4px solid #2196F3">
-                                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px">
-                                    <div>
-                                        <strong style="font-size:18px">${s.name}</strong><br>
-                                        <small style="color:#666">${s.position === 'regular' ? 'Regular Staff' : s.position === 'senior' ? 'Senior Staff' : 'Trainee'}</small>
-                                    </div>
-                                    <div style="text-align:right">
-                                        <div style="font-size:12px;color:#666">Total Deductions</div>
-                                        <div style="font-size:20px;font-weight:bold;color:#f44336">₱${totalDed.toFixed(2)}</div>
-                                    </div>
-                                </div>
-                                ${staffDeds.length === 0 ? 
-                                    '<p style="color:#999;font-size:14px">No deductions</p>' :
-                                    staffDeds.map(d => `
-                                        <div class="item" style="margin-bottom:10px">
-                                            <div>
-                                                <strong>${d.label}</strong><br>
-                                                <small style="color:#f44336;font-size:16px">₱${d.amt.toFixed(2)}</small>
-                                            </div>
-                                            <button class="btn-danger" onclick="deleteDeduction('${d.id}')">🗑️ Remove</button>
-                                        </div>
-                                    `).join('')
-                                }
-                            </div>
-                        `;
-                    }).join('')
-                }
-            `;
-        }
-
-        function renderPay() {
-            document.getElementById('view').innerHTML = `
-                <h2>Payroll Management</h2>
-                <div class="status ${!app.start || !app.end ? 'warn' : ''}">
-                    <strong>${app.start && app.end ? '✅' : '⚠️'} Pay Period:</strong> 
-                    ${app.start && app.end ? `${app.start} to ${app.end}` : 'Not set'}
+                <div class="action-buttons" style="margin-bottom: 20px;">
+                    <button class="btn-primary" onclick="clockIn()">🕐 Clock In</button>
+                    <button class="btn-warning" onclick="clockOut()">🕑 Clock Out</button>
+                    <button class="btn-danger" onclick="markStatus('rest')">😴 Rest Day</button>
+                    <button class="btn-danger" onclick="markStatus('absent')">❌ Absent</button>
                 </div>
+                
+                <div id="clock-msg" class="msg" style="display:none;"></div>
+                
+                ${isAdminAuthenticated ? `
+                <hr style="margin: 30px 0; border: none; border-top: 2px solid #e0e0e0;">
+                
+                <h3 style="margin-bottom: 15px;">✏️ Manual Time Entry</h3>
+                <div style="background: #f0f7ff; padding: 15px; border-radius: 4px; margin-bottom: 15px; border-left: 4px solid #2196F3;">
+                    <strong>ℹ️ Manual Entry</strong><br>
+                    Use this to add or edit time records manually.
+                </div>
+                
                 <div class="form-grid">
-                    <div class="form-group"><label>Start</label><input type="date" id="ps" value="${app.start}"></div>
-                    <div class="form-group"><label>End</label><input type="date" id="pe" value="${app.end}"></div>
-                </div>
-                <button class="btn-primary" onclick="setPeriod()">💾 Set Period</button>
-                <div id="pm"></div>
-                <h3 style="margin-top:30px;margin-bottom:15px">Staff Payslips</h3>
-                <div style="display:grid;gap:10px">
-                    ${app.staff.map(s => `<button onclick="viewPayslip('${s.id}')" style="padding:15px;background:#f9f9f9;border:1px solid #ddd;border-radius:6px;cursor:pointer;text-align:left">
-                        <strong>${s.name}</strong><br><small>${s.position === 'regular' ? 'Regular' : s.position === 'senior' ? 'Senior' : 'Trainee'}</small>
-                    </button>`).join('')}
-                </div>
-            `;
-        }
-
-        function renderExport() {
-            document.getElementById('view').innerHTML = `
-                <h2>Export Data</h2>
-                <div class="status">Records: ${app.records.length} | Staff: ${app.staff.length}</div>
-                <div style="display:flex;gap:10px;flex-wrap:wrap">
-                    <button style="background:#28a745;color:white" onclick="expXL()">📊 Excel</button>
-                    <button style="background:#17a2b8;color:white" onclick="expCSV()">📄 CSV</button>
-                    <button style="background:#17a2b8;color:white" onclick="expPay()">💵 Payroll CSV</button>
-                </div>
-                <div id="em"></div>
-            `;
-        }
-
-        function renderTG() {
-            const tg = JSON.parse(localStorage.getItem('tg')) || {on:false, token:'', id:''};
-            document.getElementById('view').innerHTML = `
-                <h2>Telegram Notifications</h2>
-                <div class="form-grid">
-                    <div class="form-group"><label>Enable</label>
-                        <select id="te">
-                            <option value="0" ${!tg.on?'selected':''}>Off</option>
-                            <option value="1" ${tg.on?'selected':''}>On</option>
+                    <div class="form-group">
+                        <label>Select Staff</label>
+                        <select id="manual-staff">
+                            <option value="">Choose staff member...</option>
+                            ${app.staff.map(s => `<option value="${s.id}">${s.name} (${s.position})</option>`).join('')}
                         </select>
                     </div>
-                    <div class="form-group"><label>Bot Token</label><input id="tt" value="${tg.token}" placeholder="1234567890:ABC..."></div>
-                    <div class="form-group"><label>Chat ID</label><input id="ti" value="${tg.id}" placeholder="-1001234567890"></div>
-                </div>
-                <div style="display:flex;gap:10px">
-                    <button class="btn-primary" onclick="saveTG()">💾 Save</button>
-                    <button style="background:#9C27B0;color:white" onclick="testTG()">📨 Test</button>
-                </div>
-                <div id="tm"></div>
-            `;
-        }
-
-        function renderDevice() {
-            const authorizedDevices = JSON.parse(localStorage.getItem('authorizedDevices')) || [];
-            const currentDevice = getDeviceId();
-            document.getElementById('view').innerHTML = `
-                <h2>Device Management</h2>
-                <div class="status">
-                    <strong>Current Device:</strong> <code>${currentDevice}</code>
-                </div>
-                
-                ${isFirebaseInitialized ? `
-                    <div style="background:#e3f2fd;padding:20px;border-radius:8px;margin:20px 0;border-left:4px solid #2196F3">
-                        <h3 style="margin-bottom:15px">🔥 Firebase Status</h3>
-                        <div style="display:grid;gap:10px">
-                            <div><strong>Status:</strong> <span style="color:#4CAF50">✅ Connected</span></div>
-                            <div><strong>Project:</strong> ${firebaseConfig.projectId}</div>
-                            <div><strong>Database:</strong> ${firebaseConfig.databaseURL}</div>
-                        </div>
-                        <div style="margin-top:15px">
-                            <button class="btn-primary" onclick="testFirebaseConnection()">🧪 Test Connection</button>
-                            <button style="background:#FF9800;color:white;padding:12px 24px;border:none;border-radius:4px;cursor:pointer" onclick="viewFirebaseData()">📊 View Database</button>
-                        </div>
-                        <div id="firebase-test-msg"></div>
-                    </div>
-                ` : `
-                    <div style="background:#fff3cd;padding:20px;border-radius:8px;margin:20px 0;border-left:4px solid #FF9800">
-                        <h3 style="margin-bottom:15px">⚠️ Firebase Not Connected</h3>
-                        <p style="margin-bottom:15px">Firebase configuration is not set up. Your data is only stored locally on this device.</p>
-                        <p><strong>To enable cloud sync:</strong></p>
-                        <ol style="margin:10px 0 0 20px">
-                            <li>Open the FIREBASE_SETUP_GUIDE.md file</li>
-                            <li>Follow the setup instructions</li>
-                            <li>Update the Firebase config in your HTML file</li>
-                        </ol>
-                    </div>
-                `}
-                
-                <h3 style="margin-top:30px;margin-bottom:15px">Authorize New Device</h3>
-                <div class="form-grid">
                     <div class="form-group">
-                        <label>Device ID</label>
-                        <input id="newDevId" placeholder="Enter device ID">
+                        <label>Date</label>
+                        <input type="date" id="manual-date" value="${today}">
+                    </div>
+                    <div class="form-group">
+                        <label>Clock In Time</label>
+                        <input type="time" id="manual-in" placeholder="HH:MM">
+                    </div>
+                    <div class="form-group">
+                        <label>Clock Out Time</label>
+                        <input type="time" id="manual-out" placeholder="HH:MM">
                     </div>
                 </div>
-                <button class="btn-primary" onclick="authDevice()">✅ Authorize</button>
-                <div id="devMsg"></div>
-                <h3 style="margin-top:30px;margin-bottom:15px">Authorized Devices (${authorizedDevices.length})</h3>
-                ${authorizedDevices.length === 0 ? '<p style="color:#999">No devices authorized yet</p>' :
-                    authorizedDevices.map(d => `
-                        <div class="item">
-                            <code>${d}</code>
-                            <button class="btn-danger" onclick="removeDevice('${d}')">🗑️ Remove</button>
-                        </div>
-                    `).join('')
-                }
+                
+                <div class="action-buttons" style="margin-bottom: 10px;">
+                    <button class="btn-primary" onclick="manualEntry()">💾 Save Manual Entry</button>
+                    <button class="btn-danger" onclick="manualMarkStatus('rest')">😴 Mark Rest Day</button>
+                    <button class="btn-danger" onclick="manualMarkStatus('absent')">❌ Mark Absent</button>
+                </div>
+                
+                <div id="manual-msg" class="msg" style="display:none;"></div>
+                ` : ''}
+                
+                <h3 style="margin-top: 30px; margin-bottom: 15px;">📊 Today's Activity</h3>
+                ${renderTodayRecords(today)}
             `;
         }
 
-        function removeDevice(deviceId) {
-            if (!confirm('Remove this device?')) return;
-            let authorizedDevices = JSON.parse(localStorage.getItem('authorizedDevices')) || [];
-            authorizedDevices = authorizedDevices.filter(d => d !== deviceId);
-            localStorage.setItem('authorizedDevices', JSON.stringify(authorizedDevices));
-            render();
+        function renderTodayRecords(date) {
+            const todayRecs = app.records.filter(r => r.date === date);
+            
+            if (todayRecs.length === 0) {
+                return '<p style="color: #666;">No records for today yet.</p>';
+            }
+            
+            const statusLabels = {
+                rest: '😴 Rest Day',
+                absent: '❌ Absent'
+            };
+            
+            return `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Staff</th>
+                            <th>Clock In</th>
+                            <th>Clock Out</th>
+                            <th>Hours</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${todayRecs.map(r => {
+                            const staff = app.staff.find(s => s.id === r.sid);
+                            const hours = r.status ? '-' : calcH(r.in, r.out).toFixed(2);
+                            const status = r.status ? statusLabels[r.status] : (r.out ? '✅ Complete' : '⏳ In Progress');
+                            return `
+                                <tr>
+                                    <td>${staff ? staff.name : 'Unknown'}</td>
+                                    <td>${r.in || '-'}</td>
+                                    <td>${r.out || '-'}</td>
+                                    <td>${hours}</td>
+                                    <td>${status}</td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            `;
         }
 
-        // Staff Functions
-        function addStaff() {
-            const name = document.getElementById('sn').value.trim();
-            const position = document.getElementById('sp').value;
-            const pin = document.getElementById('spin').value.trim();
-
-            if (!name || !pin) return msg('sm', 'Fill all fields', 'err');
-            if (pin.length !== 4 || !/^\d+$/.test(pin)) return msg('sm', 'PIN must be 4 digits', 'err');
-            if (app.staff.some(s => s.pin === pin)) return msg('sm', 'PIN already used', 'err');
-
-            app.staff.push({ id: Date.now().toString(), name, position, pin });
-            save();
-            document.getElementById('sn').value = '';
-            document.getElementById('spin').value = '';
-            msg('sm', 'Staff added!', 'ok');
-            render();
+        function checkPIN() {
+            const staffId = document.getElementById('clock-staff').value;
+            const pinInput = document.getElementById('clock-pin');
+            
+            if (staffId) {
+                pinInput.disabled = false;
+                pinInput.focus();
+            } else {
+                pinInput.disabled = true;
+                pinInput.value = '';
+            }
         }
 
-        function delStaff(id) {
-            if (!confirm('Delete this staff member?')) return;
-            app.staff = app.staff.filter(s => s.id !== id);
-            save();
-            render();
+        function verifyStaffPIN() {
+            const staffId = document.getElementById('clock-staff').value;
+            const pin = document.getElementById('clock-pin').value;
+            
+            if (!staffId) {
+                msg('clock-msg', '❌ Please select a staff member', 'err');
+                return null;
+            }
+            
+            const staff = app.staff.find(s => s.id === staffId);
+            if (!staff) {
+                msg('clock-msg', '❌ Staff not found', 'err');
+                return null;
+            }
+            
+            if (staff.pin !== pin) {
+                msg('clock-msg', '❌ Incorrect PIN code', 'err');
+                return null;
+            }
+            
+            return staff;
         }
 
-        // DTR Functions
         function clockIn() {
-            const pin = document.getElementById('pin').value.trim();
-            const s = app.staff.find(x => x.pin === pin);
-            if (!s) return msg('msg', 'Invalid PIN', 'err');
-
+            const staff = verifyStaffPIN();
+            if (!staff) return;
+            
             const today = new Date().toISOString().split('T')[0];
-            const exists = app.records.find(r => r.sid === s.id && r.date === today && r.in);
-            if (exists) return msg('msg', 'Already clocked in', 'err');
-
-            const time = new Date().toTimeString().split(' ')[0].slice(0, 5);
-            app.records.push({ id: Date.now().toString(), sid: s.id, date: today, in: time, out: null });
-            save();
-            sendTG(s.name, 'IN', time);
-            msg('msg', `✅ ${s.name} clocked in at ${time}`, 'ok');
-            document.getElementById('pin').value = '';
-            setTimeout(render, 1000);
+            const now = new Date().toTimeString().slice(0, 5);
+            
+            const existing = app.records.find(r => r.date === today && r.sid === staff.id);
+            
+            if (existing) {
+                msg('clock-msg', '❌ Already clocked in today', 'err');
+                return;
+            }
+            
+            app.records.push({
+                id: Date.now(),
+                sid: staff.id,
+                date: today,
+                in: now,
+                out: null,
+                status: null
+            });
+            
+            saveData();
+            msg('clock-msg', `✅ ${staff.name} clocked in at ${now}`, 'ok');
+            render();
         }
 
         function clockOut() {
-            const pin = document.getElementById('pin').value.trim();
-            const s = app.staff.find(x => x.pin === pin);
-            if (!s) return msg('msg', 'Invalid PIN', 'err');
-
+            const staff = verifyStaffPIN();
+            if (!staff) return;
+            
             const today = new Date().toISOString().split('T')[0];
-            const rec = app.records.find(r => r.sid === s.id && r.date === today && r.in && !r.out);
-            if (!rec) return msg('msg', 'No clock in record', 'err');
-
-            const time = new Date().toTimeString().split(' ')[0].slice(0, 5);
-            rec.out = time;
-            save();
-            sendTG(s.name, 'OUT', time);
-            msg('msg', `✅ ${s.name} clocked out at ${time}`, 'ok');
-            document.getElementById('pin').value = '';
-            setTimeout(render, 1000);
+            const now = new Date().toTimeString().slice(0, 5);
+            
+            const record = app.records.find(r => r.date === today && r.sid === staff.id && !r.out);
+            
+            if (!record) {
+                msg('clock-msg', '❌ No clock-in record found for today', 'err');
+                return;
+            }
+            
+            record.out = now;
+            const hours = calcH(record.in, record.out);
+            
+            saveData();
+            msg('clock-msg', `✅ ${staff.name} clocked out at ${now} (${hours.toFixed(2)} hours)`, 'ok');
+            render();
         }
 
-        function addManualEntry() {
+        function markStatus(status) {
+            const staff = verifyStaffPIN();
+            if (!staff) return;
+            
+            const today = new Date().toISOString().split('T')[0];
+            const existing = app.records.find(r => r.date === today && r.sid === staff.id);
+            
+            if (existing) {
+                msg('clock-msg', '❌ Already has a record for today', 'err');
+                return;
+            }
+            
+            const statusLabels = {
+                rest: 'Rest Day',
+                absent: 'Absent'
+            };
+            
+            app.records.push({
+                id: Date.now(),
+                sid: staff.id,
+                date: today,
+                in: null,
+                out: null,
+                status: status
+            });
+            
+            saveData();
+            msg('clock-msg', `✅ ${staff.name} marked as ${statusLabels[status]}`, 'ok');
+            render();
+        }
+
+        function manualEntry() {
             const staffId = document.getElementById('manual-staff').value;
             const date = document.getElementById('manual-date').value;
-            const inTime = document.getElementById('manual-in').value;
-            const outTime = document.getElementById('manual-out').value;
-
-            if (!staffId || !date) return msg('manual-msg', 'Select staff and date', 'err');
-            if (!inTime) return msg('manual-msg', 'Clock in time is required', 'err');
-
+            const timeIn = document.getElementById('manual-in').value;
+            const timeOut = document.getElementById('manual-out').value;
+            
+            if (!staffId) {
+                msg('manual-msg', '❌ Please select a staff member', 'err');
+                return;
+            }
+            
+            if (!date) {
+                msg('manual-msg', '❌ Please select a date', 'err');
+                return;
+            }
+            
+            if (!timeIn) {
+                msg('manual-msg', '❌ Please enter clock in time', 'err');
+                return;
+            }
+            
             const staff = app.staff.find(s => s.id === staffId);
-            if (!staff) return msg('manual-msg', 'Invalid staff', 'err');
-
-            // Check if record already exists for this staff on this date
-            const exists = app.records.find(r => r.sid === staffId && r.date === date);
-            if (exists) return msg('manual-msg', 'Record already exists for this date', 'err');
-
-            app.records.push({
-                id: Date.now().toString(),
-                sid: staffId,
-                date: date,
-                in: inTime,
-                out: outTime || null
-            });
-
-            save();
-            msg('manual-msg', `✅ Manual entry added for ${staff.name}`, 'ok');
+            if (!staff) {
+                msg('manual-msg', '❌ Staff not found', 'err');
+                return;
+            }
+            
+            // Check if record already exists for this date
+            const existingIndex = app.records.findIndex(r => r.date === date && r.sid === staffId);
+            
+            if (existingIndex >= 0) {
+                // Update existing record
+                if (!confirm(`A record already exists for ${staff.name} on ${date}. Do you want to update it?`)) {
+                    return;
+                }
+                app.records[existingIndex].in = timeIn;
+                app.records[existingIndex].out = timeOut || null;
+                app.records[existingIndex].status = null;
+                msg('manual-msg', `✅ Updated record for ${staff.name} on ${date}`, 'ok');
+            } else {
+                // Create new record
+                app.records.push({
+                    id: Date.now(),
+                    sid: staffId,
+                    date: date,
+                    in: timeIn,
+                    out: timeOut || null,
+                    status: null
+                });
+                msg('manual-msg', `✅ Added manual entry for ${staff.name}`, 'ok');
+            }
+            
+            saveData();
             
             // Clear form
             document.getElementById('manual-staff').value = '';
@@ -905,231 +951,826 @@
             setTimeout(render, 1500);
         }
 
-        function markAttendanceStatus() {
-            const staffId = document.getElementById('status-staff').value;
-            const date = document.getElementById('status-date').value;
-            const status = document.getElementById('status-type').value;
-
-            if (!staffId || !date || !status) return msg('status-msg', 'Fill all fields', 'err');
-
+        function manualMarkStatus(status) {
+            const staffId = document.getElementById('manual-staff').value;
+            const date = document.getElementById('manual-date').value;
+            
+            if (!staffId) {
+                msg('manual-msg', '❌ Please select a staff member', 'err');
+                return;
+            }
+            
+            if (!date) {
+                msg('manual-msg', '❌ Please select a date', 'err');
+                return;
+            }
+            
             const staff = app.staff.find(s => s.id === staffId);
-            if (!staff) return msg('status-msg', 'Invalid staff', 'err');
-
-            // Check if record already exists for this staff on this date
-            const exists = app.records.find(r => r.sid === staffId && r.date === date);
-            if (exists) return msg('status-msg', 'Record already exists for this date', 'err');
-
+            if (!staff) {
+                msg('manual-msg', '❌ Staff not found', 'err');
+                return;
+            }
+            
+            // Check if record already exists
+            const existingIndex = app.records.findIndex(r => r.date === date && r.sid === staffId);
+            
             const statusLabels = {
                 rest: 'Rest Day',
-                absent: 'Absent',
-                leave: 'Leave'
+                absent: 'Absent'
             };
-
-            app.records.push({
-                id: Date.now().toString(),
-                sid: staffId,
-                date: date,
-                status: status,
-                in: null,
-                out: null
-            });
-
-            save();
-            msg('status-msg', `✅ Marked ${staff.name} as ${statusLabels[status]}`, 'ok');
+            
+            if (existingIndex >= 0) {
+                // Update existing record
+                if (!confirm(`A record already exists for ${staff.name} on ${date}. Do you want to mark it as ${statusLabels[status]}?`)) {
+                    return;
+                }
+                app.records[existingIndex].in = null;
+                app.records[existingIndex].out = null;
+                app.records[existingIndex].status = status;
+                msg('manual-msg', `✅ Updated ${staff.name} to ${statusLabels[status]}`, 'ok');
+            } else {
+                // Create new status record
+                app.records.push({
+                    id: Date.now(),
+                    sid: staffId,
+                    date: date,
+                    in: null,
+                    out: null,
+                    status: status
+                });
+                msg('manual-msg', `✅ Marked ${staff.name} as ${statusLabels[status]}`, 'ok');
+            }
+            
+            saveData();
             
             // Clear form
-            document.getElementById('status-staff').value = '';
-            document.getElementById('status-type').value = '';
+            document.getElementById('manual-staff').value = '';
             
             setTimeout(render, 1500);
         }
 
-        function deleteRecord(recordId) {
-            if (!confirm('Delete this record?')) return;
-            app.records = app.records.filter(r => r.id !== recordId);
-            save();
-            render();
+        function renderRecords() {
+            const grouped = {};
+            app.records.forEach(r => {
+                if (!grouped[r.date]) grouped[r.date] = [];
+                grouped[r.date].push(r);
+            });
+            
+            const dates = Object.keys(grouped).sort().reverse();
+            
+            if (dates.length === 0) {
+                return `
+                    <h2>📋 Attendance Records</h2>
+                    <p style="color: #666;">No records yet.</p>
+                `;
+            }
+            
+            const statusLabels = {
+                rest: '😴 Rest Day',
+                absent: '❌ Absent'
+            };
+            
+            return `
+                <h2>📋 Attendance Records</h2>
+                ${dates.map(date => `
+                    <div style="margin-bottom: 30px;">
+                        <h3 style="background: #2196F3; color: white; padding: 10px; border-radius: 4px; margin-bottom: 10px;">
+                            📅 ${new Date(date + 'T00:00:00').toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                        </h3>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Staff</th>
+                                    <th>Position</th>
+                                    <th>Clock In</th>
+                                    <th>Clock Out</th>
+                                    <th>Hours</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${grouped[date].map(r => {
+                                    const staff = app.staff.find(s => s.id === r.sid);
+                                    const hours = r.status ? '-' : calcH(r.in, r.out).toFixed(2);
+                                    const status = r.status ? statusLabels[r.status] : (r.out ? '✅ Complete' : '⏳ In Progress');
+                                    return `
+                                        <tr>
+                                            <td>${staff ? staff.name : 'Unknown'}</td>
+                                            <td>${staff ? staff.position : '-'}</td>
+                                            <td>${r.in || '-'}</td>
+                                            <td>${r.out || '-'}</td>
+                                            <td>${hours}</td>
+                                            <td>${status}</td>
+                                        </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `).join('')}
+            `;
         }
 
-        // Deduction Functions
-        function addDeduction() {
-            const staffId = document.getElementById('ded-staff').value;
-            const label = document.getElementById('ded-label').value.trim();
-            const amount = parseFloat(document.getElementById('ded-amount').value);
+        function renderStaff() {
+            return `
+                <h2>👥 Staff Management</h2>
+                
+                <div style="background: #e3f2fd; padding: 15px; border-radius: 4px; margin-bottom: 20px;">
+                    <strong>ℹ️ Staff Information</strong><br>
+                    Manage employee profiles and PIN codes for clock in/out system.
+                </div>
+                
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Employee Name</label>
+                        <input type="text" id="staff-name" placeholder="Enter full name">
+                    </div>
+                    <div class="form-group">
+                        <label>Position</label>
+                        <select id="staff-position">
+                            <option value="regular">Regular Staff (₱650/day)</option>
+                            <option value="senior">Senior Staff (₱700/day)</option>
+                            <option value="trainee">Trainee (₱500/day)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>PIN Code (4 digits)</label>
+                        <input type="text" id="staff-pin" placeholder="e.g., 1234" maxlength="4">
+                    </div>
+                </div>
+                
+                <button class="btn-primary" onclick="addStaff()">➕ Add Staff Member</button>
+                <div id="staff-msg" class="msg" style="display:none;"></div>
+                
+                <h3 style="margin-top: 30px; margin-bottom: 15px;">Current Staff (${app.staff.length})</h3>
+                
+                ${app.staff.length === 0 ? '<p style="color: #666;">No staff members yet.</p>' : `
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Position</th>
+                                <th>Daily Rate</th>
+                                <th>PIN</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${app.staff.map(s => `
+                                <tr>
+                                    <td>${s.name}</td>
+                                    <td>${s.position}</td>
+                                    <td>₱${RATES[s.position].daily}</td>
+                                    <td>****</td>
+                                    <td>
+                                        <div class="action-buttons">
+                                            <button class="btn-warning" onclick="editStaff('${s.id}')">Edit</button>
+                                            <button class="btn-danger" onclick="delStaff('${s.id}')">Delete</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `}
+            `;
+        }
 
-            if (!staffId) return msg('ded-msg', 'Please select a staff member', 'err');
-            if (!label) return msg('ded-msg', 'Please enter a deduction label', 'err');
-            if (!amount || amount <= 0) return msg('ded-msg', 'Please enter a valid amount', 'err');
+        function addStaff() {
+            const name = document.getElementById('staff-name').value.trim();
+            const position = document.getElementById('staff-position').value;
+            const pin = document.getElementById('staff-pin').value.trim();
+            
+            if (!name) return msg('staff-msg', '❌ Enter name', 'err');
+            if (!/^\d{4}$/.test(pin)) return msg('staff-msg', '❌ PIN must be 4 digits', 'err');
+            
+            app.staff.push({
+                id: Date.now().toString(),
+                name,
+                position,
+                pin
+            });
+            
+            saveData();
+            msg('staff-msg', '✅ Staff added successfully!', 'ok');
+            
+            document.getElementById('staff-name').value = '';
+            document.getElementById('staff-pin').value = '';
+            
+            setTimeout(render, 1500);
+        }
 
+        function editStaff(id) {
+            const staff = app.staff.find(s => s.id === id);
+            if (!staff) return;
+            
+            currentEditingStaffId = id;
+            
+            document.getElementById('edit-name').value = staff.name;
+            document.getElementById('edit-position').value = staff.position;
+            document.getElementById('edit-pin').value = staff.pin;
+            
+            document.getElementById('edit-modal').style.display = 'flex';
+        }
+
+        function saveEmployeeUpdate() {
+            const name = document.getElementById('edit-name').value.trim();
+            const position = document.getElementById('edit-position').value;
+            const pin = document.getElementById('edit-pin').value.trim();
+            
+            const msgEl = document.getElementById('edit-msg');
+            
+            if (!name) {
+                msgEl.className = 'msg err';
+                msgEl.textContent = '❌ Enter name';
+                msgEl.style.display = 'block';
+                return;
+            }
+            
+            if (!/^\d{4}$/.test(pin)) {
+                msgEl.className = 'msg err';
+                msgEl.textContent = '❌ PIN must be 4 digits';
+                msgEl.style.display = 'block';
+                return;
+            }
+            
+            const staff = app.staff.find(s => s.id === currentEditingStaffId);
+            if (staff) {
+                staff.name = name;
+                staff.position = position;
+                staff.pin = pin;
+                
+                saveData();
+                
+                msgEl.className = 'msg ok';
+                msgEl.textContent = '✅ Updated successfully!';
+                msgEl.style.display = 'block';
+                
+                setTimeout(() => {
+                    closeEditModal();
+                    render();
+                }, 1500);
+            }
+        }
+
+        function closeEditModal() {
+            document.getElementById('edit-modal').style.display = 'none';
+            currentEditingStaffId = null;
+            document.getElementById('edit-msg').style.display = 'none';
+        }
+
+        function delStaff(id) {
+            const staff = app.staff.find(s => s.id === id);
+            if (!staff) return;
+            
+            if (!confirm(`Delete ${staff.name}?\n\nThis will also remove all their attendance records.`)) return;
+            
+            app.staff = app.staff.filter(s => s.id !== id);
+            app.records = app.records.filter(r => r.sid !== id);
+            
+            saveData();
+            msg('staff-msg', '✅ Staff deleted', 'ok');
+            setTimeout(render, 1500);
+        }
+
+
+        function renderPayroll() {
+            // Set default dates if not set
+            if (!app.start || !app.end) {
+                const today = new Date();
+                const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+                const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+                app.start = firstDay.toISOString().split('T')[0];
+                app.end = lastDay.toISOString().split('T')[0];
+            }
+
+            return `
+                <h2>💰 Payroll & Payslips</h2>
+                
+                <div class="status ${!app.start || !app.end ? 'warn' : ''}">
+                    <strong>${app.start && app.end ? '✅' : '⚠️'} Pay Period:</strong> 
+                    ${app.start && app.end ? `${app.start} to ${app.end}` : 'Not set'}
+                </div>
+                
+                <h3 style="margin-bottom: 15px;">Set Pay Period</h3>
+                <div class="form-grid" style="margin-bottom: 20px;">
+                    <div class="form-group">
+                        <label>Start Date</label>
+                        <input type="date" id="payroll-start" value="${app.start || ''}">
+                    </div>
+                    <div class="form-group">
+                        <label>End Date</label>
+                        <input type="date" id="payroll-end" value="${app.end || ''}">
+                    </div>
+                </div>
+                <button class="btn-primary" onclick="setPayrollPeriod()">💾 Set Period</button>
+                <div id="payroll-msg"></div>
+                
+                <h3 style="margin-top: 30px; margin-bottom: 15px;">Staff Payslips</h3>
+                ${app.staff.length === 0 ? 
+                    '<p style="color: #999;">No staff members added yet</p>' :
+                    '<div style="display: grid; gap: 10px;">' +
+                        app.staff.map(s => `
+                            <button onclick="viewPayslip('${s.id}')" style="padding: 15px; background: #f9f9f9; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; text-align: left; display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <strong>${s.name}</strong><br>
+                                    <small style="color: #666;">${s.position === 'regular' ? 'Regular Staff' : s.position === 'senior' ? 'Senior Staff' : 'Trainee'} • ₱${RATES[s.position].daily}/day</small>
+                                </div>
+                                <span style="color: #2196F3; font-size: 20px;">📄</span>
+                            </button>
+                        `).join('') +
+                    '</div>'
+                }
+            `;
+        }
+
+        function setPayrollPeriod() {
+            app.start = document.getElementById('payroll-start').value;
+            app.end = document.getElementById('payroll-end').value;
+            
+            if (!app.start || !app.end) {
+                msg('payroll-msg', '❌ Please select both dates', 'err');
+                return;
+            }
+            
+            if (new Date(app.start) > new Date(app.end)) {
+                msg('payroll-msg', '❌ Start date must be before end date', 'err');
+                return;
+            }
+            
+            msg('payroll-msg', '✅ Pay period updated!', 'ok');
+            setTimeout(() => render(), 1000);
+        }
+
+        function viewPayslip(staffId) {
             const staff = app.staff.find(s => s.id === staffId);
-            if (!staff) return msg('ded-msg', 'Invalid staff selected', 'err');
+            if (!staff) return;
+            
+            if (!app.start || !app.end) {
+                alert('⚠️ Please set pay period first');
+                return;
+            }
 
-            app.deductions.push({
-                id: Date.now().toString(),
-                sid: staffId,
-                label: label,
-                amt: amount
+            // Get records for this staff in the pay period
+            const records = app.records.filter(r => {
+                const recordDate = new Date(r.date);
+                return r.staffId === staffId && 
+                       recordDate >= new Date(app.start) && 
+                       recordDate <= new Date(app.end);
             });
 
-            save();
-            msg('ded-msg', `✅ Deduction added for ${staff.name}`, 'ok');
+            // Calculate payroll
+            let workDays = 0;
+            let totalHours = 0;
+            let totalLateMinutes = 0;
+            let restDays = 0;
+            let absences = 0;
+            let leaves = 0;
 
-            // Clear form
-            document.getElementById('ded-staff').value = '';
-            document.getElementById('ded-label').value = '';
-            document.getElementById('ded-amount').value = '';
-
-            setTimeout(render, 1500);
-        }
-
-        function deleteDeduction(deductionId) {
-            if (!confirm('Remove this deduction?')) return;
-            app.deductions = app.deductions.filter(d => d.id !== deductionId);
-            save();
-            render();
-        }
-
-        // Payroll Functions
-        function setPeriod() {
-            app.start = document.getElementById('ps').value;
-            app.end = document.getElementById('pe').value;
-            if (!app.start || !app.end) return msg('pm', 'Set both dates', 'err');
-            save();
-            msg('pm', 'Period saved!', 'ok');
-            render();
-        }
-
-        function viewPayslip(sid) {
-            const s = app.staff.find(x => x.id === sid);
-            if (!s) return;
-            if (!app.start || !app.end) return alert('Set pay period first');
-
-            const recs = app.records.filter(r => {
-                const rd = new Date(r.date);
-                return r.sid === sid && rd >= new Date(app.start) && rd <= new Date(app.end);
-            });
-
-            let wd = 0, ot = 0, lateM = 0, restDays = 0, absences = 0, leaves = 0;
-            recs.forEach(r => {
-                // Check if this is a status record (rest, absent, leave)
+            records.forEach(r => {
                 if (r.status === 'rest') {
                     restDays++;
                 } else if (r.status === 'absent') {
                     absences++;
                 } else if (r.status === 'leave') {
                     leaves++;
-                } else {
-                    // Normal work day calculation
-                    const h = calcH(r.in, r.out);
-                    if (h >= 9.5) wd++;
-                    ot += calcOT(r.out);
-                    lateM += calcLate(r.in);
+                } else if (r.timeIn && r.timeOut) {
+                    const hours = calculateHours(r.timeIn, r.timeOut);
+                    if (hours >= 9.5) {
+                        workDays++;
+                    }
+                    totalHours += hours;
+                    totalLateMinutes += calculateLateMinutes(r.timeIn);
                 }
             });
 
-            const rt = RATES[s.position];
-            const gross = (wd * rt.daily) + (ot * rt.ot);
-            const lp = (lateM / 60) * (rt.daily / 12);
-            const deds = app.deductions.filter(d => d.sid === sid);
-            const totDed = deds.reduce((sum, d) => sum + d.amt, 0) + lp;
-            const net = gross - totDed;
+            const rate = RATES[staff.position];
+            const grossPay = workDays * rate.daily;
+            const latePenalty = (totalLateMinutes / 60) * (rate.daily / 9.5);
+            const netPay = grossPay - latePenalty;
 
+            // Render payslip
             document.getElementById('view').innerHTML = `
-                <button onclick="render()" style="margin-bottom:20px;background:#9C27B0;color:white">← Back</button>
-                <h2 style="text-align:center;margin-bottom:10px">${s.name}</h2>
-                <p style="text-align:center;color:#666;margin-bottom:30px">${s.position === 'regular' ? 'Regular Staff' : s.position === 'senior' ? 'Senior Staff' : 'Trainee'}</p>
-                <div style="background:#f9f9f9;padding:15px;border-radius:6px;margin-bottom:20px">
-                    <strong>Period:</strong> ${app.start} to ${app.end}
+                <div class="no-print">
+                    <button onclick="render()" style="margin-bottom: 20px; background: #9C27B0; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer;">← Back to Payroll</button>
                 </div>
                 
-                ${(restDays > 0 || absences > 0 || leaves > 0) ? `
-                    <div style="background:#fff3cd;padding:15px;border-radius:6px;margin-bottom:20px;border-left:4px solid #FF9800">
-                        <strong>📋 Attendance Summary</strong><br>
-                        ${restDays > 0 ? `<small>🏖️ Rest Days: ${restDays}</small><br>` : ''}
-                        ${leaves > 0 ? `<small>🏥 Leaves: ${leaves}</small><br>` : ''}
-                        ${absences > 0 ? `<small>❌ Absences: ${absences}</small>` : ''}
+                <div style="max-width: 800px; margin: 0 auto;">
+                    <h2 style="text-align: center; margin-bottom: 10px;">${staff.name}</h2>
+                    <p style="text-align: center; color: #666; margin-bottom: 30px;">
+                        ${staff.position === 'regular' ? 'Regular Staff' : staff.position === 'senior' ? 'Senior Staff' : 'Trainee'}
+                    </p>
+                    
+                    <div style="background: #f9f9f9; padding: 15px; border-radius: 6px; margin-bottom: 20px;">
+                        <strong>Pay Period:</strong> ${app.start} to ${app.end}
                     </div>
-                ` : ''}
-                
-                <h3 style="border-bottom:2px solid #333;padding-bottom:5px;margin-bottom:15px">Earnings</h3>
-                <div style="display:flex;justify-content:space-between;padding:12px;border-bottom:1px solid #ddd"><span>Days Worked</span><span>${wd}</span></div>
-                <div style="display:flex;justify-content:space-between;padding:12px;border-bottom:1px solid #ddd"><span>Daily Rate</span><span>₱${rt.daily}</span></div>
-                <div style="display:flex;justify-content:space-between;padding:12px;border-bottom:1px solid #ddd"><span>Overtime (${ot}h)</span><span>₱${(ot * rt.ot).toFixed(2)}</span></div>
-                <div style="display:flex;justify-content:space-between;padding:12px;border-bottom:1px solid #ddd"><span>Late</span><span style="color:#f44336">-₱${lp.toFixed(2)}</span></div>
-                <div style="display:flex;justify-content:space-between;padding:15px;background:#f5f5f5;font-weight:bold;border:2px solid #333;margin:10px 0"><span>GROSS</span><span>₱${gross.toFixed(2)}</span></div>
-                <h3 style="border-bottom:2px solid #333;padding-bottom:5px;margin-top:30px">Deductions</h3>
-                ${deds.map(d => `<div style="display:flex;justify-content:space-between;padding:12px;border-bottom:1px solid #ddd"><span>${d.label}</span><span style="color:#f44336">₱${d.amt.toFixed(2)}</span></div>`).join('')}
-                <div style="display:flex;justify-content:space-between;padding:15px;background:#f5f5f5;font-weight:bold;border:2px solid #333;margin:10px 0"><span>TOTAL DED</span><span style="color:#f44336">₱${totDed.toFixed(2)}</span></div>
-                <div style="display:flex;justify-content:space-between;padding:15px;background:#E8F5E9;font-weight:bold;font-size:20px;border:2px solid #333;margin:20px 0"><span>NET PAY</span><span style="color:#4CAF50">₱${net.toFixed(2)}</span></div>
-                <div class="no-print" style="text-align:center;margin-top:20px"><button onclick="window.print()" style="background:#9C27B0;color:white;padding:12px 24px;border:none;border-radius:4px;cursor:pointer">🖨️ Print</button></div>
+                    
+                    ${(restDays > 0 || absences > 0 || leaves > 0) ? `
+                        <div style="background: #fff3cd; padding: 15px; border-radius: 6px; margin-bottom: 20px; border-left: 4px solid #FF9800;">
+                            <strong>📋 Attendance Summary</strong><br>
+                            ${restDays > 0 ? `<small>🏖️ Rest Days: ${restDays}</small><br>` : ''}
+                            ${leaves > 0 ? `<small>🏥 Leaves: ${leaves}</small><br>` : ''}
+                            ${absences > 0 ? `<small>❌ Absences: ${absences}</small>` : ''}
+                        </div>
+                    ` : ''}
+                    
+                    <h3 style="border-bottom: 2px solid #333; padding-bottom: 5px; margin-bottom: 15px;">Earnings</h3>
+                    <div style="display: flex; justify-content: space-between; padding: 12px; border-bottom: 1px solid #ddd;">
+                        <span>Days Worked</span>
+                        <span>${workDays} days</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; padding: 12px; border-bottom: 1px solid #ddd;">
+                        <span>Daily Rate</span>
+                        <span>₱${rate.daily.toFixed(2)}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; padding: 12px; border-bottom: 1px solid #ddd;">
+                        <span>Total Hours</span>
+                        <span>${totalHours.toFixed(2)} hours</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; padding: 15px; background: #f5f5f5; font-weight: bold; border: 2px solid #333; margin: 10px 0;">
+                        <span>GROSS PAY</span>
+                        <span>₱${grossPay.toFixed(2)}</span>
+                    </div>
+                    
+                    <h3 style="border-bottom: 2px solid #333; padding-bottom: 5px; margin-top: 30px; margin-bottom: 15px;">Deductions</h3>
+                    <div style="display: flex; justify-content: space-between; padding: 12px; border-bottom: 1px solid #ddd;">
+                        <span>Late (${totalLateMinutes} minutes)</span>
+                        <span style="color: #f44336;">-₱${latePenalty.toFixed(2)}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; padding: 15px; background: #f5f5f5; font-weight: bold; border: 2px solid #333; margin: 10px 0;">
+                        <span>TOTAL DEDUCTIONS</span>
+                        <span style="color: #f44336;">₱${latePenalty.toFixed(2)}</span>
+                    </div>
+                    
+                    <div style="display: flex; justify-content: space-between; padding: 20px; background: #E8F5E9; font-weight: bold; font-size: 20px; border: 2px solid #333; margin: 20px 0;">
+                        <span>NET PAY</span>
+                        <span style="color: #4CAF50;">₱${netPay.toFixed(2)}</span>
+                    </div>
+                    
+                    <div class="no-print" style="text-align: center; margin-top: 30px;">
+                        <button onclick="window.print()" style="background: #2196F3; color: white; padding: 15px 30px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: bold;">
+                            🖨️ Print Payslip
+                        </button>
+                    </div>
+                </div>
             `;
         }
 
-        function calcH(inT, outT) {
-            if (!inT || !outT) return 0;
-            const [ih, im] = inT.split(':').map(Number);
-            const [oh, om] = outT.split(':').map(Number);
-            const inm = ih * 60 + im, outm = oh * 60 + om;
-            const total = outm < inm ? (outm + 1440) - inm : outm - inm;
-            return Math.max(0, (total - 60) / 60);
+        function calculateHours(timeIn, timeOut) {
+            if (!timeIn || !timeOut) return 0;
+            
+            const [inHour, inMin] = timeIn.split(':').map(Number);
+            const [outHour, outMin] = timeOut.split(':').map(Number);
+            
+            const inMinutes = inHour * 60 + inMin;
+            const outMinutes = outHour * 60 + outMin;
+            
+            let totalMinutes = outMinutes - inMinutes;
+            if (totalMinutes < 0) totalMinutes += 24 * 60; // Handle overnight
+            
+            // Subtract 1 hour lunch break
+            totalMinutes = Math.max(0, totalMinutes - 60);
+            
+            return totalMinutes / 60;
         }
 
-        function calcLate(inT) {
-            if (!inT) return 0;
-            const [ih, im] = inT.split(':').map(Number);
-            return Math.max(0, (ih * 60 + im) - (7 * 60 + 30 + 5));
+        function calculateLateMinutes(timeIn) {
+            if (!timeIn) return 0;
+            
+            const [hour, min] = timeIn.split(':').map(Number);
+            const inMinutes = hour * 60 + min;
+            const startTime = 7 * 60 + 30; // 7:30 AM
+            const graceMinutes = 5;
+            
+            return Math.max(0, inMinutes - startTime - graceMinutes);
         }
 
-        function calcOT(outT) {
-            if (!outT) return 0;
-            const [oh, om] = outT.split(':').map(Number);
-            return (oh * 60 + om) >= (19 * 60 + 30) ? 1 : 0;
+        function renderDevices() {
+            const authorizedDevices = JSON.parse(localStorage.getItem('authorizedDevices') || '[]');
+            const currentDevice = getDeviceId();
+            
+            return `
+                <h2>📱 Device Management</h2>
+                
+                <div style="background: #e3f2fd; padding: 15px; border-radius: 4px; margin-bottom: 20px;">
+                    <strong>ℹ️ About Device Authorization</strong><br>
+                    Control which devices can access this system. Authorized devices can use all features.
+                </div>
+                
+                <div style="background: #f5f5f5; padding: 15px; border-radius: 4px; margin-bottom: 20px;">
+                    <p style="font-size: 12px; color: #888; margin-bottom: 5px;">Current Device ID:</p>
+                    <p style="font-family: monospace; font-size: 14px; word-break: break-all; margin-bottom: 10px;">${currentDevice}</p>
+                    <button class="btn-primary" onclick="authCurrentDevice()">✅ Authorize This Device</button>
+                </div>
+                
+                <div style="margin-bottom: 20px;">
+                    <button class="btn-primary" onclick="exportDevices()">📥 Export Device List</button>
+                    <label class="btn-warning" style="display: inline-block;">
+                        📤 Import Device List
+                        <input type="file" accept=".json" onchange="importDevices(event)" style="display: none;">
+                    </label>
+                </div>
+                
+                <div id="dev-msg" class="msg" style="display:none;"></div>
+                
+                <h3 style="margin-top: 30px; margin-bottom: 15px;">Authorized Devices (${authorizedDevices.length})</h3>
+                
+                ${authorizedDevices.length === 0 ? 
+                    '<p style="color: #666;">No devices authorized. Any device can access the system.</p>' 
+                : `
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Device ID</th>
+                                <th>Nickname</th>
+                                <th>Last Active</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${authorizedDevices.map(deviceId => {
+                                const deviceInfo = JSON.parse(localStorage.getItem('deviceInfo_' + deviceId) || '{}');
+                                const isCurrent = deviceId === currentDevice;
+                                const lastSeen = deviceInfo.lastSeen ? 
+                                    new Date(deviceInfo.lastSeen).toLocaleString('en-PH') : 
+                                    'Never';
+                                
+                                return `
+                                    <tr style="${isCurrent ? 'background: #e8f5e9;' : ''}">
+                                        <td style="font-family: monospace; font-size: 12px;">${deviceId.substring(0, 20)}...</td>
+                                        <td>
+                                            ${isCurrent ? '<strong>🟢 This Device</strong><br>' : ''}
+                                            <input type="text" value="${deviceInfo.nickname || ''}" 
+                                                   placeholder="Set nickname..." 
+                                                   onchange="setDeviceNickname('${deviceId}', this.value)"
+                                                   style="width: 100%; padding: 5px;">
+                                        </td>
+                                        <td style="font-size: 12px;">${lastSeen}</td>
+                                        <td>
+                                            ${!isCurrent ? `<button class="btn-danger" onclick="revokeDevice('${deviceId}')">Revoke</button>` : '<em style="color: #666;">Current device</em>'}
+                                        </td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                `}
+                
+                <div style="margin-top: 30px; padding: 15px; background: #fff3cd; border-radius: 4px; border-left: 4px solid #FF9800;">
+                    <strong>⚠️ Warning</strong><br>
+                    Revoking all devices will lock you out. Make sure at least one device stays authorized.
+                </div>
+            `;
         }
 
-        function saveTG() {
-            const on = document.getElementById('te').value === '1', token = document.getElementById('tt').value.trim(), id = document.getElementById('ti').value.trim();
-            if (on && (!token || !id)) return msg('tm', 'Fill all', 'err');
-            localStorage.setItem('tg', JSON.stringify({on, token, id}));
-            msg('tm', 'Saved!', 'ok');
+        function updateDeviceActivity() {
+            const currentDevice = getDeviceId();
+            const deviceInfo = JSON.parse(localStorage.getItem('deviceInfo_' + currentDevice) || '{}');
+            deviceInfo.lastSeen = Date.now();
+            localStorage.setItem('deviceInfo_' + currentDevice, JSON.stringify(deviceInfo));
         }
 
-        async function testTG() {
-            const token = document.getElementById('tt').value.trim(), id = document.getElementById('ti').value.trim();
-            if (!token || !id) return msg('tm', 'Fill all', 'err');
-            try {
-                await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-                    method: 'POST', headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({chat_id: id, text: '✅ Test from SRDS'})
-                });
-                msg('tm', 'Sent!', 'ok');
-            } catch(e) {
-                msg('tm', 'Failed', 'err');
+        function setDeviceNickname(deviceId, nickname) {
+            const deviceInfo = JSON.parse(localStorage.getItem('deviceInfo_' + deviceId) || '{}');
+            deviceInfo.nickname = nickname;
+            localStorage.setItem('deviceInfo_' + deviceId, JSON.stringify(deviceInfo));
+            msg('dev-msg', '✅ Nickname saved', 'ok');
+        }
+
+        function authCurrentDevice() {
+            const authorizedDevices = JSON.parse(localStorage.getItem('authorizedDevices') || '[]');
+            const currentDevice = getDeviceId();
+            
+            if (authorizedDevices.includes(currentDevice)) {
+                msg('dev-msg', 'ℹ️ This device is already authorized', 'ok');
+                return;
             }
+            
+            authorizedDevices.push(currentDevice);
+            localStorage.setItem('authorizedDevices', JSON.stringify(authorizedDevices));
+            
+            msg('dev-msg', '✅ This device has been authorized', 'ok');
+            setTimeout(render, 1500);
         }
 
-        async function sendTG(name, type, time) {
-            const tg = JSON.parse(localStorage.getItem('tg')) || {on:false};
-            if (!tg.on) return;
-            try {
-                const emoji = type === 'IN' ? '🟢' : '🔴';
-                const txt = `${emoji} <b>${name}</b> ${type === 'IN' ? 'clocked in' : 'clocked out'} at ${time}`;
-                await fetch(`https://api.telegram.org/bot${tg.token}/sendMessage`, {
-                    method: 'POST', headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({chat_id: tg.id, text: txt, parse_mode: 'HTML'})
-                });
-            } catch(e) {}
+        function revokeDevice(deviceId) {
+            if (!confirm('Revoke this device?\n\nIt will no longer be able to access the system.')) return;
+            
+            let authorizedDevices = JSON.parse(localStorage.getItem('authorizedDevices') || '[]');
+            authorizedDevices = authorizedDevices.filter(d => d !== deviceId);
+            
+            localStorage.setItem('authorizedDevices', JSON.stringify(authorizedDevices));
+            localStorage.removeItem('deviceInfo_' + deviceId);
+            
+            msg('dev-msg', '✅ Device revoked', 'ok');
+            setTimeout(render, 1500);
         }
 
-        function authDevice() {
-            const deviceId = document.getElementById('newDevId').value.trim();
-            if (!deviceId) return msg('devMsg', 'Enter device ID', 'err');
-            const authorizedDevices = JSON.parse(localStorage.getItem('authorizedDevices')) || [];
-            if (!authorizedDevices.includes(deviceId)) {
-                authorizedDevices.push(deviceId);
-                localStorage.setItem('authorizedDevices', JSON.stringify(authorizedDevices));
+        function exportDevices() {
+            const authorizedDevices = JSON.parse(localStorage.getItem('authorizedDevices') || '[]');
+            
+            if (authorizedDevices.length === 0) {
+                msg('dev-msg', '❌ No devices to export', 'err');
+                return;
             }
-            document.getElementById('newDevId').value = '';
-            msg('devMsg', 'Device authorized!', 'ok');
+            
+            const exportData = {
+                exportDate: new Date().toISOString(),
+                devices: authorizedDevices.map(deviceId => {
+                    const deviceInfo = JSON.parse(localStorage.getItem('deviceInfo_' + deviceId) || '{}');
+                    return {
+                        deviceId,
+                        nickname: deviceInfo.nickname || '',
+                        lastSeen: deviceInfo.lastSeen || null
+                    };
+                })
+            };
+            
+            const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `authorized-devices-${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            
+            msg('dev-msg', '✅ Device list exported', 'ok');
+        }
+
+        function importDevices(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    
+                    if (!data.devices || !Array.isArray(data.devices)) {
+                        throw new Error('Invalid file format');
+                    }
+                    
+                    if (!confirm(`Import ${data.devices.length} device(s)?\n\nThis will ADD to your current authorized devices (not replace).`)) {
+                        return;
+                    }
+                    
+                    const authorizedDevices = JSON.parse(localStorage.getItem('authorizedDevices') || '[]');
+                    let addedCount = 0;
+                    
+                    data.devices.forEach(device => {
+                        if (!authorizedDevices.includes(device.deviceId)) {
+                            authorizedDevices.push(device.deviceId);
+                            addedCount++;
+                        }
+                        
+                        const deviceInfo = {
+                            nickname: device.nickname || '',
+                            lastSeen: device.lastSeen || null
+                        };
+                        localStorage.setItem('deviceInfo_' + device.deviceId, JSON.stringify(deviceInfo));
+                    });
+                    
+                    localStorage.setItem('authorizedDevices', JSON.stringify(authorizedDevices));
+                    
+                    msg('dev-msg', `✅ Imported ${addedCount} new device(s)!`, 'ok');
+                    setTimeout(render, 1500);
+                    
+                } catch (err) {
+                    alert('Error importing device list: ' + err.message);
+                }
+            };
+            reader.readAsText(file);
+            
+            event.target.value = '';
+        }
+
+        function renderExport() {
+            return `
+                <h2>📊 Export Data</h2>
+                
+                <div style="background: #e3f2fd; padding: 15px; border-radius: 4px; margin-bottom: 20px;">
+                    <strong>ℹ️ Export Options</strong><br>
+                    Download attendance records and payroll data in various formats.
+                </div>
+                
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Start Date</label>
+                        <input type="date" id="exp-start" value="${app.start || ''}">
+                    </div>
+                    <div class="form-group">
+                        <label>End Date</label>
+                        <input type="date" id="exp-end" value="${app.end || ''}">
+                    </div>
+                </div>
+                
+                <div style="margin: 20px 0;">
+                    <button class="btn-primary" onclick="setExportDates()">📅 Set Date Range</button>
+                </div>
+                
+                <div id="exp-msg" class="msg" style="display:none;"></div>
+                
+                <h3 style="margin-top: 30px; margin-bottom: 15px;">Available Exports</h3>
+                
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px;">
+                    <div style="background: #f9f9f9; padding: 20px; border-radius: 6px;">
+                        <h4 style="margin-bottom: 10px;">📋 DTR Records</h4>
+                        <p style="color: #666; font-size: 14px; margin-bottom: 15px;">Daily Time Record with all clock in/out times</p>
+                        <button class="btn-primary" onclick="expCSV()" style="width: 100%;">Download CSV</button>
+                    </div>
+                    
+                    <div style="background: #f9f9f9; padding: 20px; border-radius: 6px;">
+                        <h4 style="margin-bottom: 10px;">📊 Detailed Report</h4>
+                        <p style="color: #666; font-size: 14px; margin-bottom: 15px;">Complete report with hours and status</p>
+                        <button class="btn-warning" onclick="expXL()" style="width: 100%;">Download CSV</button>
+                    </div>
+                    
+                    <div style="background: #f9f9f9; padding: 20px; border-radius: 6px;">
+                        <h4 style="margin-bottom: 10px;">💰 Payroll Summary</h4>
+                        <p style="color: #666; font-size: 14px; margin-bottom: 15px;">Calculated pay for selected period</p>
+                        <button class="btn-primary" onclick="expPay()" style="width: 100%;">Download CSV</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function setExportDates() {
+            const start = document.getElementById('exp-start').value;
+            const end = document.getElementById('exp-end').value;
+            
+            if (!start || !end) {
+                msg('exp-msg', '❌ Select both dates', 'err');
+                return;
+            }
+            
+            if (new Date(start) > new Date(end)) {
+                msg('exp-msg', '❌ Start date must be before end date', 'err');
+                return;
+            }
+            
+            app.start = start;
+            app.end = end;
+            
+            msg('exp-msg', `✅ Date range set: ${start} to ${end}`, 'ok');
+        }
+
+        function renderSettings() {
+            return `
+                <h2>⚙️ Settings</h2>
+                
+                <div style="background: #e3f2fd; padding: 15px; border-radius: 4px; margin-bottom: 20px;">
+                    <strong>ℹ️ System Settings</strong><br>
+                    Configure system preferences and manage data.
+                </div>
+                
+                <h3 style="margin-bottom: 15px;">Admin Settings</h3>
+                
+                <div style="background: #f9f9f9; padding: 20px; border-radius: 6px; margin-bottom: 20px;">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" ${hideAdminTabs ? 'checked' : ''} onchange="toggleAdminTabs(this.checked)" style="margin-right: 10px;">
+                        <span>Hide admin tabs when not logged in</span>
+                    </label>
+                    <p style="color: #666; font-size: 12px; margin-top: 5px;">When enabled, admin-only tabs will be hidden unless you're logged in as admin.</p>
+                </div>
+                
+                ${!isFirebaseConfigured ? `
+                <h3 style="margin-bottom: 15px;">Data Storage</h3>
+                <div style="background: #fff3cd; padding: 15px; border-radius: 4px; margin-bottom: 20px; border-left: 4px solid #FF9800;">
+                    <strong>⚠️ Using Local Storage Mode</strong><br>
+                    Data is stored locally on this device. To enable cloud sync:<br>
+                    <ol style="margin: 10px 0 10px 20px; color: #666;">
+                        <li>Create a Firebase project at <a href="https://console.firebase.google.com" target="_blank" style="color: #FF9800;">Firebase Console</a></li>
+                        <li>Enable Realtime Database</li>
+                        <li>Update the Firebase configuration in the HTML file</li>
+                    </ol>
+                </div>
+                ` : `
+                <h3 style="margin-bottom: 15px;">Firebase Connection</h3>
+                <div style="background: #e8f5e9; padding: 15px; border-radius: 4px; margin-bottom: 20px; border-left: 4px solid #4CAF50;">
+                    <strong>✅ Firebase Connected</strong><br>
+                    Your data is synced to the cloud.
+                </div>
+                <div style="margin-bottom: 20px;">
+                    <button class="btn-primary" onclick="testFirebaseConnection()">🔍 Test Connection</button>
+                    <button class="btn-warning" onclick="viewFirebaseData()">📊 View Data in Console</button>
+                </div>
+                <div id="firebase-test-msg" class="msg" style="display:none;"></div>
+                `}
+                
+                <h3 style="margin-top: 30px; margin-bottom: 15px;">⚠️ Danger Zone</h3>
+                
+                <div style="background: #ffebee; padding: 20px; border-radius: 6px; border-left: 4px solid #f44336;">
+                    <h4 style="color: #f44336; margin-bottom: 10px;">Clear All Data</h4>
+                    <p style="color: #666; font-size: 14px; margin-bottom: 15px;">This will permanently delete all staff and attendance records. This action cannot be undone.</p>
+                    <button class="btn-danger" onclick="clearAllData()">🗑️ Clear All Data</button>
+                </div>
+            `;
+        }
+
+        function toggleAdminTabs(hide) {
+            hideAdminTabs = hide;
+            localStorage.setItem('hideAdminTabs', hide.toString());
+            render();
         }
 
         function testFirebaseConnection() {
@@ -1148,7 +1789,6 @@
                     const data = snapshot.val();
                     if (data && data.test === true) {
                         msg('firebase-test-msg', '✅ Connection test successful! Read and write permissions work.', 'ok');
-                        // Clean up test data
                         db.ref('_test').remove();
                     } else {
                         msg('firebase-test-msg', '⚠️ Write successful but read failed. Check database rules.', 'err');
@@ -1166,7 +1806,6 @@
                 return;
             }
 
-            const dbUrl = firebaseConfig.databaseURL;
             const consoleUrl = `https://console.firebase.google.com/project/${firebaseConfig.projectId}/database/data`;
             
             if (confirm('Open Firebase Console to view your data?\n\nYou can see all your data in real-time there.')) {
@@ -1174,34 +1813,75 @@
             }
         }
 
+        function clearAllData() {
+            if (!confirm('⚠️ DELETE ALL DATA?\n\nThis will permanently delete:\n- All staff members\n- All attendance records\n\nThis action CANNOT be undone!')) {
+                return;
+            }
+            
+            if (!confirm('Are you absolutely sure?\n\nType "DELETE" in the next dialog to confirm.')) {
+                return;
+            }
+            
+            const confirmation = prompt('Type DELETE to confirm:');
+            if (confirmation !== 'DELETE') {
+                alert('Deletion cancelled.');
+                return;
+            }
+            
+            app.staff = [];
+            app.records = [];
+            
+            if (isFirebaseInitialized) {
+                db.ref().set({ staff: [], records: [] })
+                    .then(() => {
+                        localStorage.removeItem('staff');
+                        localStorage.removeItem('records');
+                        alert('✅ All data has been cleared from Firebase and localStorage.');
+                        nav('clock');
+                    })
+                    .catch(err => {
+                        console.error('Error clearing Firebase:', err);
+                        localStorage.removeItem('staff');
+                        localStorage.removeItem('records');
+                        alert('✅ All data has been cleared from localStorage.');
+                        nav('clock');
+                    });
+            } else {
+                localStorage.removeItem('staff');
+                localStorage.removeItem('records');
+                alert('✅ All data has been cleared.');
+                nav('clock');
+            }
+        }
+
         function expXL() {
-            if (app.records.length === 0) return msg('em', 'No data', 'err');
+            if (app.records.length === 0) return msg('exp-msg', 'No data', 'err');
             const rows = [['Date','Staff','Login','Logout','Hours','Status']];
             app.records.forEach(r => {
                 const s = app.staff.find(x => x.id === r.sid);
-                const statusLabels = { rest: 'Rest Day', absent: 'Absent', leave: 'Leave' };
+                const statusLabels = { rest: 'Rest Day', absent: 'Absent' };
                 const status = r.status ? statusLabels[r.status] : '-';
                 if (s) rows.push([r.date, s.name, r.in||'-', r.out||'-', r.status ? '-' : calcH(r.in, r.out).toFixed(2), status]);
             });
             dl('\uFEFF' + rows.map(row => row.map(c => `"${c}"`).join(',')).join('\n'), 'Records.csv', 'text/csv;charset=utf-8');
-            msg('em', 'Downloaded!', 'ok');
+            msg('exp-msg', 'Downloaded!', 'ok');
         }
 
         function expCSV() {
-            if (app.records.length === 0) return msg('em', 'No data', 'err');
+            if (app.records.length === 0) return msg('exp-msg', 'No data', 'err');
             const rows = [['Date','Staff','Login','Logout','Status'].join(',')];
             app.records.forEach(r => {
                 const s = app.staff.find(x => x.id === r.sid);
-                const statusLabels = { rest: 'Rest Day', absent: 'Absent', leave: 'Leave' };
+                const statusLabels = { rest: 'Rest Day', absent: 'Absent' };
                 const status = r.status ? statusLabels[r.status] : '-';
                 if (s) rows.push([r.date, `"${s.name}"`, r.in||'-', r.out||'-', status].join(','));
             });
             dl(rows.join('\n'), 'DTR.csv', 'text/csv');
-            msg('em', 'Downloaded!', 'ok');
+            msg('exp-msg', 'Downloaded!', 'ok');
         }
 
         function expPay() {
-            if (!app.start || !app.end) return msg('em', 'Set dates', 'err');
+            if (!app.start || !app.end) return msg('exp-msg', 'Set dates', 'err');
             const rows = [['Staff','Days','Net']];
             app.staff.forEach(s => {
                 const recs = app.records.filter(r => {
@@ -1210,7 +1890,6 @@
                 });
                 let wd=0;
                 recs.forEach(r => {
-                    // Only count work days, not rest/absent/leave
                     if (!r.status) {
                         const h = calcH(r.in, r.out);
                         if (h >= 9.5) wd++;
@@ -1221,7 +1900,7 @@
                 rows.push([s.name, wd, gross.toFixed(2)]);
             });
             dl('\uFEFF' + rows.map(r => r.join(',')).join('\n'), 'Payslip.csv', 'text/csv;charset=utf-8');
-            msg('em', 'Downloaded!', 'ok');
+            msg('exp-msg', 'Downloaded!', 'ok');
         }
 
         function dl(content, filename, type) {
@@ -1239,13 +1918,30 @@
             if (!el) return;
             el.className = 'msg ' + cls;
             el.textContent = txt;
-            setTimeout(() => el.textContent = '', 3000);
+            el.style.display = 'block';
+            setTimeout(() => {
+                el.style.display = 'none';
+                el.textContent = '';
+            }, 3000);
         }
+
+        // Allow Enter key to submit password
+        document.addEventListener('DOMContentLoaded', function() {
+            const passwordInput = document.getElementById('admin-password');
+            if (passwordInput) {
+                passwordInput.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        verifyPassword();
+                    }
+                });
+            }
+        });
 
         // Initialize app
         loadData();
         render();
         updateAdminStatus();
+        updateDeviceActivity();
     </script>
 </body>
 </html>
