@@ -522,7 +522,7 @@
         }
 
         function nav(view) {
-            if (['staff', 'payroll', 'devices', 'settings', 'export'].includes(view) && !isAdminAuthenticated) {
+            if (['staff', 'payroll', 'devices', 'telegram', 'settings', 'export'].includes(view) && !isAdminAuthenticated) {
                 requestAdminAuth(view);
                 return;
             }
@@ -549,7 +549,7 @@
                 adminAuthTimeout = setTimeout(() => {
                     isAdminAuthenticated = false;
                     updateAdminStatus();
-                    if (['staff', 'payroll', 'devices', 'settings', 'export'].includes(app.currentView)) {
+                    if (['staff', 'payroll', 'devices', 'telegram', 'settings', 'export'].includes(app.currentView)) {
                         nav('clock');
                     }
                 }, 30 * 60 * 1000);
@@ -609,6 +609,7 @@
                 { id: 'devices', label: '📱 Devices', admin: true },
                 { id: 'payroll', label: '💰 Payroll', admin: true },
                 { id: 'export', label: '📊 Export', admin: true },
+                { id: 'telegram', label: '📨 Telegram', admin: true },
                 { id: 'settings', label: '⚙️ Settings', admin: true }
             ];
 
@@ -634,6 +635,7 @@
                 staff: renderStaff,
                 payroll: renderPayroll,
                 devices: renderDevices,
+                telegram: renderTelegram,
                 export: renderExport,
                 settings: renderSettings
             };
@@ -834,6 +836,7 @@
             
             saveData();
             msg('clock-msg', `✅ ${staff.name} clocked in at ${now}`, 'ok');
+            sendClockNotification(staff.name, 'Clock In', today, now);
             render();
         }
 
@@ -856,6 +859,7 @@
             
             saveData();
             msg('clock-msg', `✅ ${staff.name} clocked out at ${now} (${hours.toFixed(2)} hours)`, 'ok');
+            sendClockNotification(staff.name, 'Clock Out', today, now);
             render();
         }
 
@@ -1713,6 +1717,196 @@
             app.end = end;
             
             msg('exp-msg', `✅ Date range set: ${start} to ${end}`, 'ok');
+        }
+
+
+        // ============================================
+        // TELEGRAM NOTIFICATION SYSTEM
+        // ============================================
+
+        function renderTelegram() {
+            const telegramConfig = JSON.parse(localStorage.getItem('telegramConfig')) || { 
+                enabled: false, 
+                botToken: '', 
+                chatId: '' 
+            };
+            
+            return `
+                <h2>📨 Telegram Notifications</h2>
+                
+                <div style="background: #e3f2fd; padding: 15px; border-radius: 4px; margin-bottom: 20px; border-left: 4px solid #2196F3;">
+                    <strong>ℹ️ About Telegram Notifications</strong><br>
+                    <small>Receive instant notifications when staff clock in or clock out.</small>
+                </div>
+                
+                <h3 style="margin-bottom: 15px;">Configuration</h3>
+                
+                <div class="form-group" style="margin-bottom: 20px;">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="telegram-enabled" ${telegramConfig.enabled ? 'checked' : ''} 
+                            style="margin-right: 10px; width: auto; cursor: pointer;">
+                        <span>Enable Telegram Notifications</span>
+                    </label>
+                </div>
+                
+                <div class="form-grid" style="margin-bottom: 20px;">
+                    <div class="form-group">
+                        <label>Bot Token</label>
+                        <input type="text" id="telegram-token" value="${telegramConfig.botToken || ''}" 
+                            placeholder="1234567890:ABCdefGHIjklMNOpqrsTUVwxyz">
+                        <small style="color: #666; font-size: 12px; margin-top: 5px;">Get this from @BotFather on Telegram</small>
+                    </div>
+                    <div class="form-group">
+                        <label>Chat ID</label>
+                        <input type="text" id="telegram-chatid" value="${telegramConfig.chatId || ''}" 
+                            placeholder="-1001234567890">
+                        <small style="color: #666; font-size: 12px; margin-top: 5px;">Your group or channel chat ID</small>
+                    </div>
+                </div>
+                
+                <div class="action-buttons" style="margin-bottom: 20px;">
+                    <button class="btn-primary" onclick="saveTelegramConfig()">💾 Save Configuration</button>
+                    <button class="btn-warning" onclick="testTelegramNotification()">🧪 Send Test Message</button>
+                </div>
+                
+                <div id="telegram-msg"></div>
+                
+                <div style="background: #fff3cd; padding: 15px; border-radius: 6px; margin-top: 20px; margin-bottom: 20px; border-left: 4px solid #FF9800;">
+                    <strong>📋 Notification Format</strong><br>
+                    <div style="margin-top: 10px; font-family: monospace; font-size: 13px; background: white; padding: 10px; border-radius: 4px; white-space: pre;">Clock In/Clock Out
+Staff Name: [Name]
+Date: [Date]
+Time: [Time]
+Device Nickname: [Device]</div>
+                </div>
+                
+                <div style="background: #f9f9f9; padding: 20px; border-radius: 6px;">
+                    <h4 style="margin-bottom: 15px;">📖 Setup Instructions</h4>
+                    
+                    <ol style="margin-left: 20px; line-height: 1.8; color: #555;">
+                        <li><strong>Create a Bot:</strong>
+                            <ul style="margin-left: 20px; margin-top: 5px;">
+                                <li>Open Telegram and search for <strong>@BotFather</strong></li>
+                                <li>Send <code>/newbot</code> command</li>
+                                <li>Follow instructions to create your bot</li>
+                                <li>Copy the <strong>Bot Token</strong> provided</li>
+                            </ul>
+                        </li>
+                        <li style="margin-top: 10px;"><strong>Create a Group/Channel:</strong>
+                            <ul style="margin-left: 20px; margin-top: 5px;">
+                                <li>Create a group or channel for notifications</li>
+                                <li>Add your bot to the group/channel</li>
+                                <li>Make the bot an admin (for channels)</li>
+                            </ul>
+                        </li>
+                        <li style="margin-top: 10px;"><strong>Get Chat ID:</strong>
+                            <ul style="margin-left: 20px; margin-top: 5px;">
+                                <li>Add <strong>@userinfobot</strong> to your group</li>
+                                <li>It will display the Chat ID</li>
+                                <li>Copy the Chat ID (including the minus sign if present)</li>
+                                <li>Remove @userinfobot from the group</li>
+                            </ul>
+                        </li>
+                        <li style="margin-top: 10px;"><strong>Configure:</strong>
+                            <ul style="margin-left: 20px; margin-top: 5px;">
+                                <li>Paste Bot Token and Chat ID above</li>
+                                <li>Enable notifications</li>
+                                <li>Click "Save Configuration"</li>
+                                <li>Click "Send Test Message" to verify</li>
+                            </ul>
+                        </li>
+                    </ol>
+                </div>
+            `;
+        }
+
+        function saveTelegramConfig() {
+            const config = {
+                enabled: document.getElementById('telegram-enabled').checked,
+                botToken: document.getElementById('telegram-token').value.trim(),
+                chatId: document.getElementById('telegram-chatid').value.trim()
+            };
+            
+            if (config.enabled && (!config.botToken || !config.chatId)) {
+                msg('telegram-msg', '❌ Bot Token and Chat ID are required when enabled', 'err');
+                return;
+            }
+            
+            localStorage.setItem('telegramConfig', JSON.stringify(config));
+            msg('telegram-msg', '✅ Configuration saved successfully!', 'ok');
+        }
+
+        function testTelegramNotification() {
+            const config = JSON.parse(localStorage.getItem('telegramConfig')) || {};
+            
+            if (!config.botToken || !config.chatId) {
+                msg('telegram-msg', '❌ Please configure Bot Token and Chat ID first', 'err');
+                return;
+            }
+            
+            const testMessage = `🧪 Test Notification
+
+This is a test message from Sir Ramos Drugstore.
+
+If you received this, your Telegram integration is working correctly! ✅`;
+            
+            sendTelegramMessage(config.botToken, config.chatId, testMessage)
+                .then(() => {
+                    msg('telegram-msg', '✅ Test message sent! Check your Telegram.', 'ok');
+                })
+                .catch(err => {
+                    msg('telegram-msg', '❌ Failed to send: ' + err.message, 'err');
+                });
+        }
+
+        async function sendTelegramMessage(botToken, chatId, message) {
+            const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
+            
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    chat_id: chatId,
+                    text: message
+                })
+            });
+            
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.description || 'Failed to send message');
+            }
+            
+            return response.json();
+        }
+
+        async function sendClockNotification(staffName, action, date, time) {
+            const config = JSON.parse(localStorage.getItem('telegramConfig')) || {};
+            
+            // Only send if enabled
+            if (!config.enabled || !config.botToken || !config.chatId) {
+                return;
+            }
+            
+            // Get device nickname
+            const currentDevice = getDeviceId();
+            const deviceInfo = JSON.parse(localStorage.getItem('deviceInfo_' + currentDevice) || '{}');
+            const deviceNickname = deviceInfo.nickname || 'Unnamed Device';
+            
+            // Format message exactly as specified
+            const message = `${action}
+Staff Name: ${staffName}
+Date: ${date}
+Time: ${time}
+Device Nickname: ${deviceNickname}`;
+            
+            try {
+                await sendTelegramMessage(config.botToken, config.chatId, message);
+                console.log('✅ Telegram notification sent');
+            } catch (err) {
+                console.error('❌ Telegram notification failed:', err);
+            }
         }
 
         function renderSettings() {
