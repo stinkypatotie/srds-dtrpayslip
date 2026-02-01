@@ -127,6 +127,7 @@
             console.error('❌ Firebase initialization failed:', error);
             console.log('📝 Using localStorage as fallback');
         }
+
         // Check if Firebase config is set up
         const isFirebaseConfigured = !firebaseConfig.apiKey.includes('YOUR_');
 
@@ -603,7 +604,7 @@
         function render() {
             const tabs = [
                 { id: 'clock', label: '🕐 Clock In/Out', admin: false },
-                { id: 'records', label: '📋 Records', admin: false },
+                { id: 'records', label: '📋 Records', admin: true },
                 { id: 'staff', label: '👥 Staff', admin: true },
                 { id: 'devices', label: '📱 Devices', admin: true },
                 { id: 'payroll', label: '💰 Payroll', admin: true },
