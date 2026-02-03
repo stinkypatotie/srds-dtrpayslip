@@ -9,24 +9,128 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: Arial, sans-serif; background: #f5f5f5; padding: 20px; }
-        .container { max-width: 1200px; margin: 0 auto; }
+        body { font-family: Arial, sans-serif; background: #f5f5f5; display: flex; min-height: 100vh; }
+        
+        /* Sidebar Styles */
+        .sidebar {
+            width: 250px;
+            background: #2c3e50;
+            color: white;
+            padding: 20px 0;
+            position: fixed;
+            height: 100vh;
+            overflow-y: auto;
+            z-index: 100;
+        }
+        .sidebar-header {
+            padding: 0 20px 20px 20px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            margin-bottom: 20px;
+        }
+        .sidebar-header h1 {
+            font-size: 20px;
+            color: white;
+            margin-bottom: 5px;
+        }
+        .sidebar-header .subtitle {
+            font-size: 12px;
+            color: #95a5a6;
+        }
+        .sidebar-menu {
+            list-style: none;
+        }
+        .sidebar-menu li {
+            margin-bottom: 5px;
+        }
+        .sidebar-menu a {
+            display: flex;
+            align-items: center;
+            padding: 12px 20px;
+            color: #ecf0f1;
+            text-decoration: none;
+            transition: all 0.3s;
+            position: relative;
+        }
+        .sidebar-menu a:hover {
+            background: rgba(255,255,255,0.1);
+        }
+        .sidebar-menu a.active {
+            background: #3498db;
+            border-left: 4px solid #2ecc71;
+        }
+        .sidebar-menu a .icon {
+            margin-right: 12px;
+            font-size: 18px;
+        }
+        .sidebar-menu a .lock {
+            margin-left: auto;
+            font-size: 12px;
+            opacity: 0.6;
+        }
+        .sidebar-footer {
+            padding: 20px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            margin-top: 20px;
+        }
+        .admin-status-sidebar {
+            font-size: 12px;
+            color: #95a5a6;
+        }
+        .admin-badge-sidebar {
+            background: #e74c3c;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            display: inline-block;
+            margin-bottom: 10px;
+        }
+        .logout-btn-sidebar {
+            background: #e74c3c;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            border: none;
+            width: 100%;
+            margin-top: 10px;
+        }
+        .login-btn-sidebar {
+            background: #3498db;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            border: none;
+            width: 100%;
+            margin-top: 10px;
+        }
+        
+        /* Main Content Area */
+        .main-wrapper {
+            margin-left: 250px;
+            flex: 1;
+            padding: 20px;
+            width: calc(100% - 250px);
+        }
+        .container { max-width: 1200px; margin: 0 auto; width: 100%; }
         .header { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
         .header h1 { font-size: 28px; color: #333; margin-bottom: 20px; }
-        .tabs { display: flex; gap: 10px; flex-wrap: wrap; }
-        .tab { padding: 12px 24px; border: none; background: #e0e0e0; color: #666; border-radius: 6px; cursor: pointer; font-size: 14px; position: relative; }
-        .tab.active { background: #2196F3; color: white; }
-        .tab .lock { position: absolute; top: 5px; right: 8px; font-size: 10px; }
+        .tabs { display: none; } /* Hide old tabs */
         .content { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         h2 { font-size: 20px; color: #333; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 2px solid #2196F3; }
         .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-bottom: 20px; }
         .form-group { display: flex; flex-direction: column; }
         label { font-size: 14px; font-weight: 600; color: #555; margin-bottom: 5px; }
-        input, select { padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
+        input, select, textarea { padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
+        textarea { resize: vertical; min-height: 100px; font-family: Arial, sans-serif; }
         button { padding: 12px 24px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
         .btn-primary { background: #4CAF50; color: white; }
         .btn-warning { background: #FF9800; color: white; }
         .btn-danger { background: #f44336; color: white; }
+        .btn-info { background: #2196F3; color: white; }
         .item { background: #f9f9f9; padding: 15px; border-radius: 6px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
         table { width: 100%; border-collapse: collapse; margin-top: 20px; }
         th { background: #2196F3; color: white; padding: 12px; text-align: left; border: 1px solid #ddd; }
@@ -34,6 +138,7 @@
         tr:nth-child(even) { background: #f9f9f9; }
         .status { background: #e8f5e9; padding: 10px; border-radius: 4px; margin-bottom: 20px; border-left: 4px solid #4CAF50; }
         .status.warn { background: #fff3cd; border-left-color: #FF9800; }
+        .status.info { background: #e3f2fd; border-left-color: #2196F3; }
         .msg { padding: 10px; border-radius: 4px; margin-top: 10px; }
         .msg.ok { background: #d4edda; color: #155724; }
         .msg.err { background: #f8d7da; color: #721c24; }
@@ -43,23 +148,63 @@
         .logout-btn { background: #f44336; color: white; padding: 8px 16px; border-radius: 4px; font-size: 12px; cursor: pointer; border: none; }
         .action-buttons { display: flex; gap: 10px; }
         .firebase-notice { background: #fff3cd; padding: 15px; border-radius: 4px; margin-bottom: 20px; border-left: 4px solid #FF9800; }
-        @media print { .header, .tabs, .no-print { display: none !important; } }
+        .deduction-item { background: #fff9e6; border-left: 3px solid #FF9800; }
+        .info-box { background: #e3f2fd; padding: 15px; border-radius: 4px; margin-bottom: 15px; border-left: 4px solid #2196F3; }
+        .info-box strong { color: #1976d2; }
+        .info-box small { color: #555; display: block; margin-top: 5px; }
+        
+        /* Edit functionality styles */
+        .btn-edit { background: #9C27B0; color: white; padding: 6px 12px; font-size: 12px; }
+        .btn-save { background: #4CAF50; color: white; padding: 6px 12px; font-size: 12px; }
+        .btn-cancel { background: #757575; color: white; padding: 6px 12px; font-size: 12px; }
+        .edit-input { padding: 4px 8px; border: 1px solid #2196F3; border-radius: 4px; font-size: 13px; width: 80px; }
+        
+        /* Simplified payslip styles */
+        .payslip-simple { margin-top: 20px; }
+        .payslip-simple table { margin-top: 10px; }
+        .payslip-simple .total-row { background: #e3f2fd !important; font-weight: bold; }
+        
+        /* Mobile Responsive */
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 100%;
+                height: auto;
+                position: relative;
+            }
+            .main-wrapper {
+                margin-left: 0;
+                width: 100%;
+            }
+        }
+        
+        @media print { 
+            .sidebar, .header, .tabs, .no-print { display: none !important; }
+            .main-wrapper { margin-left: 0; width: 100%; }
+        }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header no-print">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <h1>Sir Ramos Drugstore</h1>
-                <div id="admin-status"></div>
-            </div>
-            <div class="tabs" id="tabs"></div>
-            <div id="admin-login-prompt" style="display: none; margin-top: 15px; padding: 12px; background: #fff3cd; border-radius: 4px; border-left: 4px solid #FF9800;">
-                <span style="color: #856404;">🔒 Admin features are hidden. </span>
-                <button class="btn-warning" onclick="showAdminLogin()" style="padding: 6px 12px; font-size: 13px;">Login as Admin</button>
-            </div>
+    <!-- Sidebar Navigation -->
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <h1>🏪 Sir Ramos</h1>
+            <div class="subtitle">Drugstore System</div>
         </div>
-        <div class="content" id="view"></div>
+        
+        <ul class="sidebar-menu" id="sidebar-menu">
+            <!-- Navigation items will be dynamically generated -->
+        </ul>
+        
+        <div class="sidebar-footer">
+            <div id="admin-status-sidebar"></div>
+        </div>
+    </div>
+
+    <!-- Main Content Area -->
+    <div class="main-wrapper">
+        <div class="container">
+            <div class="content" id="view"></div>
+        </div>
     </div>
 
     <div id="auth-modal" class="modal" style="display: none;">
@@ -129,6 +274,7 @@
         }
 
 
+
         // Check if Firebase config is set up
         const isFirebaseConfigured = !firebaseConfig.apiKey.includes('YOUR_');
 
@@ -157,1043 +303,289 @@
         function getDeviceId() {
             let deviceId = localStorage.getItem('deviceId');
             if (!deviceId) {
-                deviceId = 'dev_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                deviceId = 'device-' + Math.random().toString(36).substr(2, 9);
                 localStorage.setItem('deviceId', deviceId);
             }
             return deviceId;
         }
 
-        function checkDeviceAuth() {
-            const authorizedDevices = JSON.parse(localStorage.getItem('authorizedDevices') || '[]');
-            const currentDevice = getDeviceId();
-            if (authorizedDevices.length === 0) return true;
-            return authorizedDevices.includes(currentDevice);
-        }
+        const deviceId = getDeviceId();
+        let authorizedDevices = [];
 
-        function showAuthScreen() {
-            const currentDevice = getDeviceId();
-            
-            // Render limited interface for unauthorized devices
-            document.body.innerHTML = `
-                <div class="container">
-                    <div class="header">
-                        <h1>Sir Ramos Drugstore</h1>
-                        <div style="background:#fff3cd;padding:10px;border-radius:4px;border-left:4px solid #FF9800;margin-top:15px">
-                            <small style="color:#856404">⚠️ Limited Access Mode - This device is not authorized for admin features</small>
-                        </div>
-                    </div>
-                    <div class="content">
-                        <h2>⏰ Clock In/Out</h2>
-                        <div class="status">📅 Today: ${new Date().toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
-                        
-                        <div class="form-grid">
-                            <div class="form-group">
-                                <label>Select Staff</label>
-                                <select id="clock-staff" onchange="checkPIN()">
-                                    <option value="">Choose staff member...</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>PIN Code</label>
-                                <input type="password" id="clock-pin" placeholder="Enter 4-digit PIN" maxlength="4">
-                            </div>
-                        </div>
-                        
-                        <div class="action-buttons" style="margin-bottom: 20px;">
-                            <button class="btn-primary" onclick="limitedClockIn()">🕐 Clock In</button>
-                            <button class="btn-danger" onclick="limitedClockOut()">🕗 Clock Out</button>
-                        </div>
-                        
-                        <div id="clock-msg"></div>
-                        
-                        <div style="margin-top:40px;padding-top:20px;border-top:1px solid #ddd">
-                            <details style="cursor:pointer">
-                                <summary style="color:#666;font-size:13px;cursor:pointer;user-select:none">
-                                    ℹ️ Device Information
-                                </summary>
-                                <div style="margin-top:15px;padding:15px;background:#f9f9f9;border-radius:6px">
-                                    <p style="margin:0 0 10px 0;font-size:13px"><strong>Your Device ID:</strong></p>
-                                    <div style="display:flex;gap:10px;align-items:center">
-                                        <input type="text" id="device-id-display" value="${currentDevice}" readonly 
-                                            style="flex:1;font-family:monospace;font-size:12px;padding:8px;border:1px solid #ddd;border-radius:4px;background:white">
-                                        <button onclick="copyDeviceId()" style="background:#2196F3;color:white;padding:8px 16px;border:none;border-radius:4px;cursor:pointer;font-size:12px">
-                                            📋 Copy
-                                        </button>
-                                    </div>
-                                    <p style="margin:10px 0 0 0;font-size:12px;color:#666">
-                                        To access admin features, share this Device ID with your administrator for authorization.
-                                    </p>
-                                </div>
-                            </details>
-                        </div>
-                    </div>
-                </div>
-
-                <script>
-                    const currentDeviceId = "${currentDevice}";
-                    let staffList = [];
-                    
-                    // Check if Firebase is available
-                    const isFirebaseAvailable = typeof firebase !== 'undefined' && firebase.database;
-                    const isFirebaseInitialized = isFirebaseAvailable && firebase.apps.length > 0;
-                    // Firebase config check
-                    
-                    // Load staff from Firebase or localStorage
-                    function loadStaffForLimited() {
-                        if (isFirebaseInitialized) {
-                            firebase.database().ref('staff').on('value', (snapshot) => {
-                                staffList = snapshot.val() || [];
-                                updateStaffDropdown();
-                            });
-                        } else {
-                            staffList = JSON.parse(localStorage.getItem('staff')) || [];
-                            updateStaffDropdown();
-                        }
-                    }
-                    
-                    function updateStaffDropdown() {
-                        const select = document.getElementById('clock-staff');
-                        select.innerHTML = '<option value="">Choose staff member...</option>' +
-                            staffList.map(s => 
-                                '<option value="' + s.id + '">' + s.name + ' (' + s.position + ')</option>'
-                            ).join('');
-                    }
-                    
-                    function checkPIN() {
-                        document.getElementById('clock-pin').value = '';
-                        document.getElementById('clock-pin').focus();
-                    }
-                    
-                    function limitedClockIn() {
-                        const staffId = document.getElementById('clock-staff').value;
-                        const pin = document.getElementById('clock-pin').value.trim();
-                        
-                        if (!staffId) {
-                            showMsg('❌ Please select a staff member', 'err');
-                            return;
-                        }
-                        
-                        if (!pin) {
-                            showMsg('❌ Please enter PIN', 'err');
-                            return;
-                        }
-                        
-                        const staff = staffList.find(s => s.id === staffId);
-                        if (!staff || staff.pin !== pin) {
-                            showMsg('❌ Invalid PIN', 'err');
-                            document.getElementById('clock-pin').value = '';
-                            return;
-                        }
-                        
-                        const today = new Date().toISOString().split('T')[0];
-                        const time = new Date().toTimeString().split(' ')[0].substring(0, 5);
-                        
-                        const record = {
-                            id: Date.now().toString(),
-                            staffId: staffId,
-                            date: today,
-                            timeIn: time,
-                            timeOut: null,
-                            status: null
-                        };
-                        
-                        if (isFirebaseInitialized) {
-                            // Check if already clocked in
-                            firebase.database().ref('records').once('value', (snapshot) => {
-                                const records = snapshot.val() || [];
-                                const alreadyIn = records.find(r => 
-                                    r.staffId === staffId && r.date === today && r.timeIn && !r.timeOut
-                                );
-                                
-                                if (alreadyIn) {
-                                    showMsg('⚠️ Already clocked in today', 'err');
-                                    return;
-                                }
-                                
-                                // Add new record
-                                const newRecords = [...records, record];
-                                firebase.database().ref('records').set(newRecords)
-                                    .then(() => {
-                                        showMsg('✅ ' + staff.name + ' clocked in at ' + time, 'ok');
-                                        document.getElementById('clock-staff').value = '';
-                                        document.getElementById('clock-pin').value = '';
-                                    })
-                                    .catch(err => showMsg('❌ Error: ' + err.message, 'err'));
-                            });
-                        } else {
-                            const records = JSON.parse(localStorage.getItem('records')) || [];
-                            const alreadyIn = records.find(r => 
-                                r.staffId === staffId && r.date === today && r.timeIn && !r.timeOut
-                            );
-                            
-                            if (alreadyIn) {
-                                showMsg('⚠️ Already clocked in today', 'err');
-                                return;
-                            }
-                            
-                            records.push(record);
-                            localStorage.setItem('records', JSON.stringify(records));
-                            showMsg('✅ ' + staff.name + ' clocked in at ' + time, 'ok');
-                            document.getElementById('clock-staff').value = '';
-                            document.getElementById('clock-pin').value = '';
-                        }
-                    }
-                    
-                    function limitedClockOut() {
-                        const staffId = document.getElementById('clock-staff').value;
-                        const pin = document.getElementById('clock-pin').value.trim();
-                        
-                        if (!staffId) {
-                            showMsg('❌ Please select a staff member', 'err');
-                            return;
-                        }
-                        
-                        if (!pin) {
-                            showMsg('❌ Please enter PIN', 'err');
-                            return;
-                        }
-                        
-                        const staff = staffList.find(s => s.id === staffId);
-                        if (!staff || staff.pin !== pin) {
-                            showMsg('❌ Invalid PIN', 'err');
-                            document.getElementById('clock-pin').value = '';
-                            return;
-                        }
-                        
-                        const today = new Date().toISOString().split('T')[0];
-                        const time = new Date().toTimeString().split(' ')[0].substring(0, 5);
-                        
-                        if (isFirebaseInitialized) {
-                            firebase.database().ref('records').once('value', (snapshot) => {
-                                const records = snapshot.val() || [];
-                                const recordIndex = records.findIndex(r => 
-                                    r.staffId === staffId && r.date === today && r.timeIn && !r.timeOut
-                                );
-                                
-                                if (recordIndex === -1) {
-                                    showMsg('❌ No clock in record found', 'err');
-                                    return;
-                                }
-                                
-                                records[recordIndex].timeOut = time;
-                                firebase.database().ref('records').set(records)
-                                    .then(() => {
-                                        showMsg('✅ ' + staff.name + ' clocked out at ' + time, 'ok');
-                                        document.getElementById('clock-staff').value = '';
-                                        document.getElementById('clock-pin').value = '';
-                                    })
-                                    .catch(err => showMsg('❌ Error: ' + err.message, 'err'));
-                            });
-                        } else {
-                            const records = JSON.parse(localStorage.getItem('records')) || [];
-                            const record = records.find(r => 
-                                r.staffId === staffId && r.date === today && r.timeIn && !r.timeOut
-                            );
-                            
-                            if (!record) {
-                                showMsg('❌ No clock in record found', 'err');
-                                return;
-                            }
-                            
-                            record.timeOut = time;
-                            localStorage.setItem('records', JSON.stringify(records));
-                            showMsg('✅ ' + staff.name + ' clocked out at ' + time, 'ok');
-                            document.getElementById('clock-staff').value = '';
-                            document.getElementById('clock-pin').value = '';
-                        }
-                    }
-                    
-                    function showMsg(text, type) {
-                        const msgEl = document.getElementById('clock-msg');
-                        msgEl.className = 'msg ' + type;
-                        msgEl.textContent = text;
-                        setTimeout(() => msgEl.textContent = '', 3000);
-                    }
-                    
-                    function copyDeviceId() {
-                        const input = document.getElementById('device-id-display');
-                        input.select();
-                        input.setSelectionRange(0, 99999);
-                        
-                        try {
-                            document.execCommand('copy');
-                            const btn = event.target;
-                            const original = btn.textContent;
-                            btn.textContent = '✅ Copied!';
-                            setTimeout(() => btn.textContent = original, 2000);
-                        } catch (err) {
-                            alert('Device ID: ' + input.value);
-                        }
-                    }
-                    
-                    // Load staff on startup
-                    loadStaffForLimited();
-                </scr' + 'ipt>
-            `;
-        }
-
-        // Check device authorization on load
-        if (!checkDeviceAuth()) {
-            showAuthScreen();
-            throw new Error('Unauthorized device - halting execution');
-        }
-
-        const RATES = {
-            regular: { daily: 650, ot: 68 },
-            trainee: { daily: 500, ot: 52 },
-            senior: { daily: 700, ot: 73 }
-        };
-
+        // App State
         const app = {
             staff: [],
             records: [],
-            currentView: 'clock',
-            start: null,
-            end: null
+            deductions: [], // NEW: Store cash advances/deductions
+            settings: {
+                adminPassword: 'admin123', // Global admin password
+                telegram: {
+                    enabled: false,
+                    botToken: '',
+                    chatId: '',
+                    notifications: {
+                        clockIn: true,
+                        clockOut: true,
+                        newDeduction: true,
+                        payrollGenerated: false
+                    }
+                }
+            },
+            start: '',
+            end: '',
+            view: 'clock',
+            editingRecord: null,
+            adminMode: false // Track if admin mode is active
         };
 
+        const RATES = {
+            regular: { daily: 650, ot: 68 },
+            senior: { daily: 700, ot: 73 },
+            trainee: { daily: 500, ot: 53 }
+        };
+
+        // Save and Load Data
         function saveData() {
+            const dataToSave = {
+                staff: app.staff,
+                records: app.records,
+                deductions: app.deductions,
+                settings: app.settings
+            };
+
             if (isFirebaseInitialized) {
-                try {
-                    // Save to Firebase
-                    const updates = {
-                        '/staff': app.staff,
-                        '/records': app.records
-                    };
-                    db.ref().update(updates)
-                        .then(() => console.log('✅ Data saved to Firebase'))
-                        .catch(err => {
-                            console.error('Firebase save error:', err);
-                            // Fallback to localStorage
-                            localStorage.setItem('staff', JSON.stringify(app.staff));
-                            localStorage.setItem('records', JSON.stringify(app.records));
-                        });
-                } catch (error) {
-                    console.error('Error saving to Firebase:', error);
-                    localStorage.setItem('staff', JSON.stringify(app.staff));
-                    localStorage.setItem('records', JSON.stringify(app.records));
-                }
+                db.ref().set(dataToSave)
+                    .then(() => {
+                        console.log('✅ Data saved to Firebase');
+                        localStorage.setItem('staff', JSON.stringify(app.staff));
+                        localStorage.setItem('records', JSON.stringify(app.records));
+                        localStorage.setItem('deductions', JSON.stringify(app.deductions));
+                        localStorage.setItem('settings', JSON.stringify(app.settings));
+                    })
+                    .catch((error) => {
+                        console.error('❌ Firebase save failed:', error);
+                        console.log('💾 Falling back to localStorage');
+                        localStorage.setItem('staff', JSON.stringify(app.staff));
+                        localStorage.setItem('records', JSON.stringify(app.records));
+                        localStorage.setItem('deductions', JSON.stringify(app.deductions));
+                        localStorage.setItem('settings', JSON.stringify(app.settings));
+                    });
             } else {
-                // Save to localStorage
                 localStorage.setItem('staff', JSON.stringify(app.staff));
                 localStorage.setItem('records', JSON.stringify(app.records));
+                localStorage.setItem('deductions', JSON.stringify(app.deductions));
+                localStorage.setItem('settings', JSON.stringify(app.settings));
+                console.log('💾 Data saved to localStorage');
             }
         }
 
         function loadData() {
             if (isFirebaseInitialized) {
-                // Load from Firebase
-                db.ref('/staff').once('value')
-                    .then(snapshot => {
-                        app.staff = snapshot.val() || [];
-                        return db.ref('/records').once('value');
-                    })
-                    .then(snapshot => {
-                        app.records = snapshot.val() || [];
-                        console.log('✅ Data loaded from Firebase');
+                db.ref().once('value')
+                    .then((snapshot) => {
+                        const data = snapshot.val();
+                        if (data) {
+                            app.staff = data.staff || [];
+                            app.records = data.records || [];
+                            app.deductions = data.deductions || [];
+                            app.settings = data.settings || app.settings;
+                            console.log('✅ Data loaded from Firebase');
+                            localStorage.setItem('staff', JSON.stringify(app.staff));
+                            localStorage.setItem('records', JSON.stringify(app.records));
+                            localStorage.setItem('deductions', JSON.stringify(app.deductions));
+                            localStorage.setItem('settings', JSON.stringify(app.settings));
+                        } else {
+                            loadFromLocalStorage();
+                        }
                         render();
                     })
-                    .catch(err => {
-                        console.error('Firebase load error:', err);
-                        // Fallback to localStorage
-                        app.staff = JSON.parse(localStorage.getItem('staff') || '[]');
-                        app.records = JSON.parse(localStorage.getItem('records') || '[]');
+                    .catch((error) => {
+                        console.error('❌ Firebase load failed:', error);
+                        loadFromLocalStorage();
                         render();
                     });
             } else {
-                // Load from localStorage
-                app.staff = JSON.parse(localStorage.getItem('staff') || '[]');
-                app.records = JSON.parse(localStorage.getItem('records') || '[]');
+                loadFromLocalStorage();
             }
         }
 
-        function calcH(inTime, outTime) {
-            if (!inTime || !outTime) return 0;
-            const [ih, im] = inTime.split(':').map(Number);
-            const [oh, om] = outTime.split(':').map(Number);
-            return ((oh * 60 + om) - (ih * 60 + im)) / 60;
+        function loadFromLocalStorage() {
+            app.staff = JSON.parse(localStorage.getItem('staff')) || [];
+            app.records = JSON.parse(localStorage.getItem('records')) || [];
+            app.deductions = JSON.parse(localStorage.getItem('deductions')) || [];
+            const savedSettings = JSON.parse(localStorage.getItem('settings'));
+            if (savedSettings) {
+                app.settings = savedSettings;
+            }
+            console.log('💾 Data loaded from localStorage');
+        }
+
+        function loadAuthorizedDevices() {
+            if (isFirebaseInitialized) {
+                db.ref('devices').once('value')
+                    .then((snapshot) => {
+                        const data = snapshot.val();
+                        authorizedDevices = data || [];
+                        localStorage.setItem('authorizedDevices', JSON.stringify(authorizedDevices));
+                        updateDeviceActivity();
+                    })
+                    .catch((error) => {
+                        console.error('Error loading devices:', error);
+                        authorizedDevices = JSON.parse(localStorage.getItem('authorizedDevices')) || [];
+                        updateDeviceActivity();
+                    });
+            } else {
+                authorizedDevices = JSON.parse(localStorage.getItem('authorizedDevices')) || [];
+                updateDeviceActivity();
+            }
+        }
+
+        function saveAuthorizedDevices() {
+            if (isFirebaseInitialized) {
+                db.ref('devices').set(authorizedDevices)
+                    .then(() => {
+                        console.log('✅ Authorized devices saved to Firebase');
+                        localStorage.setItem('authorizedDevices', JSON.stringify(authorizedDevices));
+                    })
+                    .catch((error) => {
+                        console.error('❌ Firebase save failed:', error);
+                        localStorage.setItem('authorizedDevices', JSON.stringify(authorizedDevices));
+                    });
+            } else {
+                localStorage.setItem('authorizedDevices', JSON.stringify(authorizedDevices));
+            }
+        }
+
+        function updateDeviceActivity() {
+            const device = authorizedDevices.find(d => d.id === deviceId);
+            if (device) {
+                device.lastActive = new Date().toISOString();
+                saveAuthorizedDevices();
+            }
+        }
+
+        // Admin Authentication
+        function requireAuth(callback) {
+            if (!isAdminAuthenticated) {
+                document.getElementById('auth-modal').style.display = 'flex';
+                window.pendingAdminAction = callback;
+            } else {
+                callback();
+            }
         }
 
         function showAdminLogin() {
-            app.pendingAdminView = 'staff'; // Default to staff view after login
             document.getElementById('auth-modal').style.display = 'flex';
-            document.getElementById('admin-password').value = '';
-            document.getElementById('auth-error').textContent = '';
-            setTimeout(() => document.getElementById('admin-password').focus(), 100);
-        }
-
-        function nav(view) {
-            if (['staff', 'payroll', 'devices', 'telegram', 'settings', 'export'].includes(view) && !isAdminAuthenticated) {
-                requestAdminAuth(view);
-                return;
-            }
-            app.currentView = view;
-            render();
-        }
-
-        function requestAdminAuth(targetView) {
-            app.pendingAdminView = targetView;
-            document.getElementById('auth-modal').style.display = 'flex';
-            document.getElementById('admin-password').value = '';
-            document.getElementById('auth-error').textContent = '';
-            setTimeout(() => document.getElementById('admin-password').focus(), 100);
+            document.getElementById('admin-password').focus();
         }
 
         function verifyPassword() {
-            const password = document.getElementById('admin-password').value;
-            if (password === ADMIN_PASSWORD) {
+            const pwd = document.getElementById('admin-password').value;
+            const errorEl = document.getElementById('auth-error');
+            
+            if (pwd === ADMIN_PASSWORD) {
                 isAdminAuthenticated = true;
-                closeAuthModal();
+                hideAdminTabs = false;
+                localStorage.setItem('hideAdminTabs', 'false');
                 
-                // Set timeout to auto-logout after 30 minutes
-                if (adminAuthTimeout) clearTimeout(adminAuthTimeout);
+                clearTimeout(adminAuthTimeout);
                 adminAuthTimeout = setTimeout(() => {
                     isAdminAuthenticated = false;
                     updateAdminStatus();
-                    if (['staff', 'payroll', 'devices', 'telegram', 'settings', 'export'].includes(app.currentView)) {
-                        nav('clock');
-                    }
-                }, 30 * 60 * 1000);
+                }, 3600000);
                 
+                closeAuthModal();
                 updateAdminStatus();
-                
-                if (app.pendingAdminView) {
-                    app.currentView = app.pendingAdminView;
-                    app.pendingAdminView = null;
-                }
                 render();
+                
+                if (window.pendingAdminAction) {
+                    window.pendingAdminAction();
+                    window.pendingAdminAction = null;
+                }
             } else {
-                document.getElementById('auth-error').textContent = '❌ Incorrect password';
+                errorEl.textContent = '❌ Incorrect password';
             }
         }
 
         function closeAuthModal() {
             document.getElementById('auth-modal').style.display = 'none';
-            app.pendingAdminView = null;
+            document.getElementById('admin-password').value = '';
+            document.getElementById('auth-error').textContent = '';
+        }
+
+        function logout() {
+            isAdminAuthenticated = false;
+            hideAdminTabs = true;
+            localStorage.setItem('hideAdminTabs', 'true');
+            clearTimeout(adminAuthTimeout);
+            updateAdminStatus();
+            render();
         }
 
         function updateAdminStatus() {
-            const statusEl = document.getElementById('admin-status');
-            if (!statusEl) return;
+            const statusDiv = document.getElementById('admin-status-sidebar');
             
             if (isAdminAuthenticated) {
-                statusEl.innerHTML = `
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <span class="admin-badge">👤 Admin Mode</span>
-                        <button class="logout-btn" onclick="logoutAdmin()">Logout</button>
+                statusDiv.innerHTML = `
+                    <div class="admin-badge-sidebar">👤 Admin Mode</div>
+                    <div class="admin-status-sidebar" style="margin-bottom: 10px;">
+                        Session active
                     </div>
+                    <button class="logout-btn-sidebar" onclick="logout()">Logout</button>
                 `;
             } else {
-                statusEl.innerHTML = '';
-            }
-        }
-
-        function logoutAdmin() {
-            isAdminAuthenticated = false;
-            if (adminAuthTimeout) {
-                clearTimeout(adminAuthTimeout);
-                adminAuthTimeout = null;
-            }
-            updateAdminStatus();
-            if (['staff', 'devices', 'settings', 'export'].includes(app.currentView)) {
-                nav('clock');
-            } else {
-                render();
-            }
-        }
-
-        function render() {
-            const tabs = [
-                { id: 'clock', label: '🕐 Clock In/Out', admin: false },
-                { id: 'records', label: '📋 Records', admin: true },
-                { id: 'staff', label: '👥 Staff', admin: true },
-                { id: 'devices', label: '📱 Devices', admin: true },
-                { id: 'payroll', label: '💰 Payroll', admin: true },
-                { id: 'export', label: '📊 Export', admin: true },
-                { id: 'telegram', label: '📨 Telegram', admin: true },
-                { id: 'settings', label: '⚙️ Settings', admin: true }
-            ];
-
-            const tabsHtml = tabs
-                .filter(t => !hideAdminTabs || !t.admin || isAdminAuthenticated)
-                .map(t => {
-                    const isLocked = t.admin && !isAdminAuthenticated;
-                    const lockIcon = isLocked ? '<span class="lock">🔒</span>' : '';
-                    return `<button class="tab ${app.currentView === t.id ? 'active' : ''}" onclick="nav('${t.id}')">${t.label}${lockIcon}</button>`;
-                }).join('');
-
-            document.getElementById('tabs').innerHTML = tabsHtml;
-
-            // Show admin login prompt if tabs are hidden and not authenticated
-            const loginPrompt = document.getElementById('admin-login-prompt');
-            if (loginPrompt) {
-                loginPrompt.style.display = (hideAdminTabs && !isAdminAuthenticated) ? 'block' : 'none';
-            }
-
-            const views = {
-                clock: renderClock,
-                records: renderRecords,
-                staff: renderStaff,
-                payroll: renderPayroll,
-                devices: renderDevices,
-                telegram: renderTelegram,
-                export: renderExport,
-                settings: renderSettings
-            };
-
-            const viewEl = document.getElementById('view');
-            
-            // Show Firebase notice if not configured
-            let firebaseNotice = '';
-            if (!isFirebaseConfigured && ['staff', 'devices', 'settings'].includes(app.currentView)) {
-                firebaseNotice = `
-                    <div class="firebase-notice">
-                        <strong>⚠️ Firebase Not Configured</strong><br>
-                        This app is running in localStorage mode. Data is stored locally on this device only.<br>
-                        To enable cloud sync across devices, configure Firebase in the code (see instructions in source).
-                    </div>
-                `;
-            }
-            
-            viewEl.innerHTML = firebaseNotice + (views[app.currentView] ? views[app.currentView]() : '');
-        }
-
-        function renderClock() {
-            const today = new Date().toISOString().split('T')[0];
-            
-            return `
-                <h2>⏰ Clock In/Out</h2>
-                <div class="status">📅 Today: ${new Date().toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
-                
-                <div class="form-grid">
-                    <div class="form-group">
-                        <label>Select Staff</label>
-                        <select id="clock-staff" onchange="checkPIN()">
-                            <option value="">Choose staff member...</option>
-                            ${app.staff.map(s => `<option value="${s.id}">${s.name} (${s.position})</option>`).join('')}
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>PIN Code</label>
-                        <input type="password" id="clock-pin" placeholder="Enter 4-digit PIN" maxlength="4">
-                    </div>
-                </div>
-                
-                <div class="action-buttons" style="margin-bottom: 20px;">
-                    <button class="btn-primary" onclick="clockIn()">🕐 Clock In</button>
-                    <button class="btn-warning" onclick="clockOut()">🕑 Clock Out</button>
-                    <button class="btn-danger" onclick="markStatus('rest')">😴 Rest Day</button>
-                    <button class="btn-danger" onclick="markStatus('absent')">❌ Absent</button>
-                </div>
-                
-                <div id="clock-msg" class="msg" style="display:none;"></div>
-                
-                ${isAdminAuthenticated ? `
-                <hr style="margin: 30px 0; border: none; border-top: 2px solid #e0e0e0;">
-                
-                <h3 style="margin-bottom: 15px;">✏️ Manual Time Entry</h3>
-                <div style="background: #f0f7ff; padding: 15px; border-radius: 4px; margin-bottom: 15px; border-left: 4px solid #2196F3;">
-                    <strong>ℹ️ Manual Entry</strong><br>
-                    Use this to add or edit time records manually.
-                </div>
-                
-                <div class="form-grid">
-                    <div class="form-group">
-                        <label>Select Staff</label>
-                        <select id="manual-staff">
-                            <option value="">Choose staff member...</option>
-                            ${app.staff.map(s => `<option value="${s.id}">${s.name} (${s.position})</option>`).join('')}
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Date</label>
-                        <input type="date" id="manual-date" value="${today}">
-                    </div>
-                    <div class="form-group">
-                        <label>Clock In Time</label>
-                        <input type="time" id="manual-in" placeholder="HH:MM">
-                    </div>
-                    <div class="form-group">
-                        <label>Clock Out Time</label>
-                        <input type="time" id="manual-out" placeholder="HH:MM">
-                    </div>
-                </div>
-                
-                <div class="action-buttons" style="margin-bottom: 10px;">
-                    <button class="btn-primary" onclick="manualEntry()">💾 Save Manual Entry</button>
-                    <button class="btn-danger" onclick="manualMarkStatus('rest')">😴 Mark Rest Day</button>
-                    <button class="btn-danger" onclick="manualMarkStatus('absent')">❌ Mark Absent</button>
-                </div>
-                
-                <div id="manual-msg" class="msg" style="display:none;"></div>
-                ` : ''}
-                
-                <h3 style="margin-top: 30px; margin-bottom: 15px;">📊 Today's Activity</h3>
-                ${renderTodayRecords(today)}
-            `;
-        }
-
-        function renderTodayRecords(date) {
-            const todayRecs = app.records.filter(r => r.date === date);
-            
-            if (todayRecs.length === 0) {
-                return '<p style="color: #666;">No records for today yet.</p>';
-            }
-            
-            const statusLabels = {
-                rest: '😴 Rest Day',
-                absent: '❌ Absent'
-            };
-            
-            return `
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Staff</th>
-                            <th>Clock In</th>
-                            <th>Clock Out</th>
-                            <th>Hours</th>
-                            <th>Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${todayRecs.map(r => {
-                            const staff = app.staff.find(s => s.id === r.sid);
-                            const hours = r.status ? '-' : calcH(r.in, r.out).toFixed(2);
-                            const status = r.status ? statusLabels[r.status] : (r.out ? '✅ Complete' : '⏳ In Progress');
-                            return `
-                                <tr>
-                                    <td>${staff ? staff.name : 'Unknown'}</td>
-                                    <td>${r.in || '-'}</td>
-                                    <td>${r.out || '-'}</td>
-                                    <td>${hours}</td>
-                                    <td>${status}</td>
-                                </tr>
-                            `;
-                        }).join('')}
-                    </tbody>
-                </table>
-            `;
-        }
-
-        function checkPIN() {
-            const staffId = document.getElementById('clock-staff').value;
-            const pinInput = document.getElementById('clock-pin');
-            
-            if (staffId) {
-                pinInput.disabled = false;
-                pinInput.focus();
-            } else {
-                pinInput.disabled = true;
-                pinInput.value = '';
-            }
-        }
-
-        function verifyStaffPIN() {
-            const staffId = document.getElementById('clock-staff').value;
-            const pin = document.getElementById('clock-pin').value;
-            
-            if (!staffId) {
-                msg('clock-msg', '❌ Please select a staff member', 'err');
-                return null;
-            }
-            
-            const staff = app.staff.find(s => s.id === staffId);
-            if (!staff) {
-                msg('clock-msg', '❌ Staff not found', 'err');
-                return null;
-            }
-            
-            if (staff.pin !== pin) {
-                msg('clock-msg', '❌ Incorrect PIN code', 'err');
-                return null;
-            }
-            
-            return staff;
-        }
-
-        function clockIn() {
-            const staff = verifyStaffPIN();
-            if (!staff) return;
-            
-            const today = new Date().toISOString().split('T')[0];
-            const now = new Date().toTimeString().slice(0, 5);
-            
-            const existing = app.records.find(r => r.date === today && r.sid === staff.id && !r.out);
-            
-            if (existing) {
-                msg('clock-msg', '❌ Already clocked in today. Please clock out first.', 'err');
-                return;
-            }
-            
-            app.records.push({
-                id: Date.now(),
-                sid: staff.id,
-                date: today,
-                in: now,
-                out: null,
-                status: null
-            });
-            
-            saveData();
-            msg('clock-msg', `✅ ${staff.name} clocked in at ${now}`, 'ok');
-            sendClockNotification(staff.name, 'Clock In', today, now);
-            render();
-        }
-
-        function clockOut() {
-            const staff = verifyStaffPIN();
-            if (!staff) return;
-            
-            const today = new Date().toISOString().split('T')[0];
-            const now = new Date().toTimeString().slice(0, 5);
-            
-            const record = app.records.find(r => r.date === today && r.sid === staff.id && !r.out);
-            
-            if (!record) {
-                msg('clock-msg', '❌ No clock-in record found for today', 'err');
-                return;
-            }
-            
-            record.out = now;
-            const hours = calcH(record.in, record.out);
-            
-            saveData();
-            msg('clock-msg', `✅ ${staff.name} clocked out at ${now} (${hours.toFixed(2)} hours)`, 'ok');
-            sendClockNotification(staff.name, 'Clock Out', today, now);
-            render();
-        }
-
-        function markStatus(status) {
-            const staff = verifyStaffPIN();
-            if (!staff) return;
-            
-            const today = new Date().toISOString().split('T')[0];
-            const existing = app.records.find(r => r.date === today && r.sid === staff.id);
-            
-            if (existing) {
-                msg('clock-msg', '❌ Already has a record for today', 'err');
-                return;
-            }
-            
-            const statusLabels = {
-                rest: 'Rest Day',
-                absent: 'Absent'
-            };
-            
-            app.records.push({
-                id: Date.now(),
-                sid: staff.id,
-                date: today,
-                in: null,
-                out: null,
-                status: status
-            });
-            
-            saveData();
-            msg('clock-msg', `✅ ${staff.name} marked as ${statusLabels[status]}`, 'ok');
-            render();
-        }
-
-        function manualEntry() {
-            const staffId = document.getElementById('manual-staff').value;
-            const date = document.getElementById('manual-date').value;
-            const timeIn = document.getElementById('manual-in').value;
-            const timeOut = document.getElementById('manual-out').value;
-            
-            if (!staffId) {
-                msg('manual-msg', '❌ Please select a staff member', 'err');
-                return;
-            }
-            
-            if (!date) {
-                msg('manual-msg', '❌ Please select a date', 'err');
-                return;
-            }
-            
-            if (!timeIn) {
-                msg('manual-msg', '❌ Please enter clock in time', 'err');
-                return;
-            }
-            
-            const staff = app.staff.find(s => s.id === staffId);
-            if (!staff) {
-                msg('manual-msg', '❌ Staff not found', 'err');
-                return;
-            }
-            
-            // Check if record already exists for this date
-            const existingIndex = app.records.findIndex(r => r.date === date && r.sid === staffId);
-            
-            if (existingIndex >= 0) {
-                // Update existing record
-                if (!confirm(`A record already exists for ${staff.name} on ${date}. Do you want to update it?`)) {
-                    return;
+                if (hideAdminTabs) {
+                    statusDiv.innerHTML = `
+                        <div class="admin-status-sidebar" style="margin-bottom: 10px;">
+                            Admin features hidden
+                        </div>
+                        <button class="login-btn-sidebar" onclick="showAdminLogin()">Login as Admin</button>
+                    `;
+                } else {
+                    statusDiv.innerHTML = `
+                        <div class="admin-status-sidebar">
+                            Not logged in
+                        </div>
+                    `;
                 }
-                app.records[existingIndex].in = timeIn;
-                app.records[existingIndex].out = timeOut || null;
-                app.records[existingIndex].status = null;
-                msg('manual-msg', `✅ Updated record for ${staff.name} on ${date}`, 'ok');
-            } else {
-                // Create new record
-                app.records.push({
-                    id: Date.now(),
-                    sid: staffId,
-                    date: date,
-                    in: timeIn,
-                    out: timeOut || null,
-                    status: null
-                });
-                msg('manual-msg', `✅ Added manual entry for ${staff.name}`, 'ok');
             }
-            
-            saveData();
-            
-            // Clear form
-            document.getElementById('manual-staff').value = '';
-            document.getElementById('manual-in').value = '';
-            document.getElementById('manual-out').value = '';
-            
-            setTimeout(render, 1500);
         }
 
-        function manualMarkStatus(status) {
-            const staffId = document.getElementById('manual-staff').value;
-            const date = document.getElementById('manual-date').value;
-            
-            if (!staffId) {
-                msg('manual-msg', '❌ Please select a staff member', 'err');
-                return;
-            }
-            
-            if (!date) {
-                msg('manual-msg', '❌ Please select a date', 'err');
-                return;
-            }
-            
+        // Edit Employee Modal Functions
+        function openEditModal(staffId) {
             const staff = app.staff.find(s => s.id === staffId);
-            if (!staff) {
-                msg('manual-msg', '❌ Staff not found', 'err');
-                return;
-            }
-            
-            // Check if record already exists
-            const existingIndex = app.records.findIndex(r => r.date === date && r.sid === staffId);
-            
-            const statusLabels = {
-                rest: 'Rest Day',
-                absent: 'Absent'
-            };
-            
-            if (existingIndex >= 0) {
-                // Update existing record
-                if (!confirm(`A record already exists for ${staff.name} on ${date}. Do you want to mark it as ${statusLabels[status]}?`)) {
-                    return;
-                }
-                app.records[existingIndex].in = null;
-                app.records[existingIndex].out = null;
-                app.records[existingIndex].status = status;
-                msg('manual-msg', `✅ Updated ${staff.name} to ${statusLabels[status]}`, 'ok');
-            } else {
-                // Create new status record
-                app.records.push({
-                    id: Date.now(),
-                    sid: staffId,
-                    date: date,
-                    in: null,
-                    out: null,
-                    status: status
-                });
-                msg('manual-msg', `✅ Marked ${staff.name} as ${statusLabels[status]}`, 'ok');
-            }
-            
-            saveData();
-            
-            // Clear form
-            document.getElementById('manual-staff').value = '';
-            
-            setTimeout(render, 1500);
-        }
-
-        function renderRecords() {
-            const grouped = {};
-            app.records.forEach(r => {
-                if (!grouped[r.date]) grouped[r.date] = [];
-                grouped[r.date].push(r);
-            });
-            
-            const dates = Object.keys(grouped).sort().reverse();
-            
-            if (dates.length === 0) {
-                return `
-                    <h2>📋 Attendance Records</h2>
-                    <p style="color: #666;">No records yet.</p>
-                `;
-            }
-            
-            const statusLabels = {
-                rest: '😴 Rest Day',
-                absent: '❌ Absent'
-            };
-            
-            return `
-                <h2>📋 Attendance Records</h2>
-                ${dates.map(date => `
-                    <div style="margin-bottom: 30px;">
-                        <h3 style="background: #2196F3; color: white; padding: 10px; border-radius: 4px; margin-bottom: 10px;">
-                            📅 ${new Date(date + 'T00:00:00').toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-                        </h3>
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Staff</th>
-                                    <th>Position</th>
-                                    <th>Clock In</th>
-                                    <th>Clock Out</th>
-                                    <th>Hours</th>
-                                    <th>Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${grouped[date].map(r => {
-                                    const staff = app.staff.find(s => s.id === r.sid);
-                                    const hours = r.status ? '-' : calcH(r.in, r.out).toFixed(2);
-                                    const status = r.status ? statusLabels[r.status] : (r.out ? '✅ Complete' : '⏳ In Progress');
-                                    return `
-                                        <tr>
-                                            <td>${staff ? staff.name : 'Unknown'}</td>
-                                            <td>${staff ? staff.position : '-'}</td>
-                                            <td>${r.in || '-'}</td>
-                                            <td>${r.out || '-'}</td>
-                                            <td>${hours}</td>
-                                            <td>${status}</td>
-                                        </tr>
-                                    `;
-                                }).join('')}
-                            </tbody>
-                        </table>
-                    </div>
-                `).join('')}
-            `;
-        }
-
-        function renderStaff() {
-            return `
-                <h2>👥 Staff Management</h2>
-                
-                <div style="background: #e3f2fd; padding: 15px; border-radius: 4px; margin-bottom: 20px;">
-                    <strong>ℹ️ Staff Information</strong><br>
-                    Manage employee profiles and PIN codes for clock in/out system.
-                </div>
-                
-                <div class="form-grid">
-                    <div class="form-group">
-                        <label>Employee Name</label>
-                        <input type="text" id="staff-name" placeholder="Enter full name">
-                    </div>
-                    <div class="form-group">
-                        <label>Position</label>
-                        <select id="staff-position">
-                            <option value="regular">Regular Staff (₱650/day)</option>
-                            <option value="senior">Senior Staff (₱700/day)</option>
-                            <option value="trainee">Trainee (₱500/day)</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>PIN Code (4 digits)</label>
-                        <input type="text" id="staff-pin" placeholder="e.g., 1234" maxlength="4">
-                    </div>
-                </div>
-                
-                <button class="btn-primary" onclick="addStaff()">➕ Add Staff Member</button>
-                <div id="staff-msg" class="msg" style="display:none;"></div>
-                
-                <h3 style="margin-top: 30px; margin-bottom: 15px;">Current Staff (${app.staff.length})</h3>
-                
-                ${app.staff.length === 0 ? '<p style="color: #666;">No staff members yet.</p>' : `
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Name</th>
-                                <th>Position</th>
-                                <th>Daily Rate</th>
-                                <th>PIN</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${app.staff.map(s => `
-                                <tr>
-                                    <td>${s.name}</td>
-                                    <td>${s.position}</td>
-                                    <td>₱${RATES[s.position].daily}</td>
-                                    <td>****</td>
-                                    <td>
-                                        <div class="action-buttons">
-                                            <button class="btn-warning" onclick="editStaff('${s.id}')">Edit</button>
-                                            <button class="btn-danger" onclick="delStaff('${s.id}')">Delete</button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                `}
-            `;
-        }
-
-        function addStaff() {
-            const name = document.getElementById('staff-name').value.trim();
-            const position = document.getElementById('staff-position').value;
-            const pin = document.getElementById('staff-pin').value.trim();
-            
-            if (!name) return msg('staff-msg', '❌ Enter name', 'err');
-            if (!/^\d{4}$/.test(pin)) return msg('staff-msg', '❌ PIN must be 4 digits', 'err');
-            
-            app.staff.push({
-                id: Date.now().toString(),
-                name,
-                position,
-                pin
-            });
-            
-            saveData();
-            msg('staff-msg', '✅ Staff added successfully!', 'ok');
-            
-            document.getElementById('staff-name').value = '';
-            document.getElementById('staff-pin').value = '';
-            
-            setTimeout(render, 1500);
-        }
-
-        function editStaff(id) {
-            const staff = app.staff.find(s => s.id === id);
             if (!staff) return;
             
-            currentEditingStaffId = id;
-            
+            currentEditingStaffId = staffId;
             document.getElementById('edit-name').value = staff.name;
             document.getElementById('edit-position').value = staff.position;
             document.getElementById('edit-pin').value = staff.pin;
-            
             document.getElementById('edit-modal').style.display = 'flex';
         }
 
+        function closeEditModal() {
+            document.getElementById('edit-modal').style.display = 'none';
+            currentEditingStaffId = null;
+            document.getElementById('edit-msg').style.display = 'none';
+        }
+
         function saveEmployeeUpdate() {
+            if (!currentEditingStaffId) return;
+            
             const name = document.getElementById('edit-name').value.trim();
             const position = document.getElementById('edit-position').value;
             const pin = document.getElementById('edit-pin').value.trim();
             
-            const msgEl = document.getElementById('edit-msg');
-            
-            if (!name) {
+            if (!name || !pin) {
+                const msgEl = document.getElementById('edit-msg');
                 msgEl.className = 'msg err';
-                msgEl.textContent = '❌ Enter name';
+                msgEl.textContent = '❌ Please fill all fields';
                 msgEl.style.display = 'block';
                 return;
             }
             
             if (!/^\d{4}$/.test(pin)) {
+                const msgEl = document.getElementById('edit-msg');
                 msgEl.className = 'msg err';
                 msgEl.textContent = '❌ PIN must be 4 digits';
                 msgEl.style.display = 'block';
@@ -1205,419 +597,876 @@
                 staff.name = name;
                 staff.position = position;
                 staff.pin = pin;
-                
                 saveData();
-                
-                msgEl.className = 'msg ok';
-                msgEl.textContent = '✅ Updated successfully!';
-                msgEl.style.display = 'block';
-                
-                setTimeout(() => {
-                    closeEditModal();
-                    render();
-                }, 1500);
+                closeEditModal();
+                render();
             }
         }
 
-        function closeEditModal() {
-            document.getElementById('edit-modal').style.display = 'none';
-            currentEditingStaffId = null;
-            document.getElementById('edit-msg').style.display = 'none';
+        // Navigation
+        const TABS = [
+            { id: 'clock', label: 'Clock In/Out', icon: '🕐', admin: false },
+            { id: 'view', label: 'View DTR', icon: '📋', admin: true },
+            { id: 'payroll', label: 'Payroll', icon: '💰', admin: true },
+            { id: 'deductions', label: 'Deductions', icon: '💸', admin: true },
+            { id: 'staff', label: 'Staff', icon: '👥', admin: true },
+            { id: 'export', label: 'Export', icon: '📊', admin: true },
+            { id: 'devices', label: 'Devices', icon: '🔐', admin: true },
+            { id: 'firebase', label: 'Firebase', icon: '🔥', admin: true },
+            { id: 'settings', label: 'Settings', icon: '⚙️', admin: true }
+        ];
+
+        function nav(view) {
+            const tab = TABS.find(t => t.id === view);
+            if (tab && tab.admin && !isAdminAuthenticated) {
+                requireAuth(() => nav(view));
+                return;
+            }
+            app.view = view;
+            render();
         }
 
-        function delStaff(id) {
-            const staff = app.staff.find(s => s.id === id);
-            if (!staff) return;
+        function render() {
+            // Render sidebar menu
+            const visibleTabs = hideAdminTabs && !isAdminAuthenticated 
+                ? TABS.filter(t => !t.admin)
+                : TABS;
+
+            document.getElementById('sidebar-menu').innerHTML = visibleTabs.map(t => 
+                `<li>
+                    <a href="#" class="${app.view === t.id ? 'active' : ''}" onclick="nav('${t.id}'); return false;">
+                        <span class="icon">${t.icon}</span>
+                        <span>${t.label}</span>
+                        ${t.admin && !isAdminAuthenticated ? '<span class="lock">🔒</span>' : ''}
+                    </a>
+                </li>`
+            ).join('');
+
+            const views = {
+                clock: renderClock,
+                view: renderView,
+                payroll: renderPayroll,
+                deductions: renderDeductions,
+                staff: renderStaff,
+                export: renderExport,
+                devices: renderDevices,
+                firebase: renderFirebase,
+                settings: renderSettings
+            };
             
-            if (!confirm(`Delete ${staff.name}?\n\nThis will also remove all their attendance records.`)) return;
-            
-            app.staff = app.staff.filter(s => s.id !== id);
-            app.records = app.records.filter(r => r.sid !== id);
-            
-            saveData();
-            msg('staff-msg', '✅ Staff deleted', 'ok');
-            setTimeout(render, 1500);
+            document.getElementById('view').innerHTML = views[app.view] ? views[app.view]() : '';
         }
 
+        // Clock View
+        function renderClock() {
+            return `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2 style="margin: 0;">🕐 Clock In/Out</h2>
+                    ${!app.adminMode ? `
+                        <button class="btn-info" onclick="showAdminLogin()" style="padding: 8px 16px;">
+                            🔐 Admin Mode
+                        </button>
+                    ` : `
+                        <button class="btn-danger" onclick="exitAdminMode()" style="padding: 8px 16px;">
+                            🚪 Exit Admin Mode
+                        </button>
+                    `}
+                </div>
+                <div class="status">
+                    <strong>📅 ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</strong><br>
+                    🕐 ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                </div>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Select Staff</label>
+                        <select id="staff-sel">
+                            <option value="">Choose staff...</option>
+                            ${app.staff.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Enter PIN</label>
+                        <input type="password" id="pin-inp" placeholder="4-digit PIN" maxlength="4">
+                    </div>
+                </div>
+                <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                    <button class="btn-primary" onclick="clockIn()">⏰ Clock In</button>
+                    <button class="btn-warning" onclick="clockOut()">🏁 Clock Out</button>
+                </div>
+                <div id="clock-msg" class="msg" style="display: none;"></div>
+                ${renderTodayRecords()}
+            `;
+        }
 
-        function renderPayroll() {
-            // Set default dates if not set
-            if (!app.start || !app.end) {
-                const today = new Date();
-                const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-                const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-                app.start = firstDay.toISOString().split('T')[0];
-                app.end = lastDay.toISOString().split('T')[0];
+        function renderTodayRecords() {
+            const today = new Date().toISOString().split('T')[0];
+            const todayRecs = app.records.filter(r => r.date === today);
+            
+            if (todayRecs.length === 0) {
+                return '<p style="color: #666; margin-top: 20px;">No records for today yet.</p>';
             }
 
             return `
-                <h2>💰 Payroll & Payslips</h2>
-                
-                <div class="status ${!app.start || !app.end ? 'warn' : ''}">
-                    <strong>${app.start && app.end ? '✅' : '⚠️'} Pay Period:</strong> 
-                    ${app.start && app.end ? `${app.start} to ${app.end}` : 'Not set'}
-                </div>
-                
-                <h3 style="margin-bottom: 15px;">Set Pay Period</h3>
-                <div class="form-grid" style="margin-bottom: 20px;">
+                <h3 style="margin-top: 30px; margin-bottom: 15px; color: #333;">Today's Activity</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Staff</th>
+                            <th>Clock In</th>
+                            <th>Clock Out</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${todayRecs.map(r => {
+                            const staff = app.staff.find(s => s.id === r.sid);
+                            const statusLabels = { rest: '🏖️ Rest Day', absent: '❌ Absent' };
+                            const status = r.status ? statusLabels[r.status] : (r.out ? '✅ Complete' : '⏳ In Progress');
+                            return `
+                                <tr>
+                                    <td>${staff ? staff.name : 'Unknown'}</td>
+                                    <td>${r.in || '-'}</td>
+                                    <td>${r.out || '-'}</td>
+                                    <td>${status}</td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+
+        function clockIn() {
+            const sid = document.getElementById('staff-sel').value;
+            const pin = document.getElementById('pin-inp').value;
+            if (!sid || !pin) return msg('clock-msg', 'Select staff and enter PIN', 'err');
+            
+            const s = app.staff.find(x => x.id === sid);
+            if (!s || s.pin !== pin) return msg('clock-msg', 'Invalid PIN', 'err');
+            
+            const today = new Date().toISOString().split('T')[0];
+            const existing = app.records.find(r => r.sid === sid && r.date === today);
+            
+            if (existing && existing.in) {
+                return msg('clock-msg', 'Already clocked in today', 'err');
+            }
+            
+            const time = new Date().toLocaleTimeString('en-US', { hour12: false });
+            
+            if (existing) {
+                existing.in = time;
+                existing.status = null;
+            } else {
+                app.records.push({ sid, date: today, in: time, out: null, status: null });
+            }
+            
+            saveData();
+            msg('clock-msg', `✅ ${s.name} clocked in at ${time}`, 'ok');
+            
+            // Send Telegram notification with device info
+            if (app.settings.telegram.enabled && app.settings.telegram.notifications.clockIn) {
+                const deviceName = localStorage.getItem('deviceName') || 'Unknown Device';
+                const notifMessage = `🟢 <b>Time-In</b>\n\n` +
+                    `<b>Name:</b> ${s.name}\n` +
+                    `<b>Date:</b> ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}\n` +
+                    `<b>Time:</b> ${time}\n` +
+                    `<b>Device:</b> ${deviceName}`;
+                sendTelegramNotification(notifMessage);
+            }
+            
+            render();
+        }
+
+        function clockOut() {
+            const sid = document.getElementById('staff-sel').value;
+            const pin = document.getElementById('pin-inp').value;
+            if (!sid || !pin) return msg('clock-msg', 'Select staff and enter PIN', 'err');
+            
+            const s = app.staff.find(x => x.id === sid);
+            if (!s || s.pin !== pin) return msg('clock-msg', 'Invalid PIN', 'err');
+            
+            const today = new Date().toISOString().split('T')[0];
+            const rec = app.records.find(r => r.sid === sid && r.date === today);
+            
+            if (!rec || !rec.in) return msg('clock-msg', 'Not clocked in yet', 'err');
+            if (rec.out) return msg('clock-msg', 'Already clocked out', 'err');
+            
+            const time = new Date().toLocaleTimeString('en-US', { hour12: false });
+            rec.out = time;
+            
+            const hours = calcH(rec.in, time);
+            
+            saveData();
+            msg('clock-msg', `✅ ${s.name} clocked out at ${time}`, 'ok');
+            
+            // Send Telegram notification with device info
+            if (app.settings.telegram.enabled && app.settings.telegram.notifications.clockOut) {
+                const deviceName = localStorage.getItem('deviceName') || 'Unknown Device';
+                const notifMessage = `🔴 <b>Time-Out</b>\n\n` +
+                    `<b>Name:</b> ${s.name}\n` +
+                    `<b>Date:</b> ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}\n` +
+                    `<b>Time:</b> ${time}\n` +
+                    `<b>Device:</b> ${deviceName}`;
+                sendTelegramNotification(notifMessage);
+            }
+            
+            render();
+        }
+
+        // View DTR
+        function renderView() {
+            return `
+                <h2>📋 View DTR</h2>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Select Staff</label>
+                        <select id="view-staff" onchange="render()">
+                            <option value="">All Staff</option>
+                            ${app.staff.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+                        </select>
+                    </div>
                     <div class="form-group">
                         <label>Start Date</label>
-                        <input type="date" id="payroll-start" value="${app.start || ''}">
+                        <input type="date" id="view-start" value="${app.start}" onchange="app.start=this.value; render()">
                     </div>
                     <div class="form-group">
                         <label>End Date</label>
-                        <input type="date" id="payroll-end" value="${app.end || ''}">
+                        <input type="date" id="view-end" value="${app.end}" onchange="app.end=this.value; render()">
                     </div>
                 </div>
-                <button class="btn-primary" onclick="setPayrollPeriod()">💾 Set Period</button>
-                <div id="payroll-msg"></div>
-                
-                <h3 style="margin-top: 30px; margin-bottom: 15px;">Staff Payslips</h3>
-                ${app.staff.length === 0 ? 
-                    '<p style="color: #999;">No staff members added yet</p>' :
-                    '<div style="display: grid; gap: 10px;">' +
-                        app.staff.map(s => `
-                            <button onclick="viewPayslip('${s.id}')" style="padding: 15px; background: #f9f9f9; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; text-align: left; display: flex; justify-content: space-between; align-items: center;">
-                                <div>
-                                    <strong>${s.name}</strong><br>
-                                    <small style="color: #666;">${s.position === 'regular' ? 'Regular Staff' : s.position === 'senior' ? 'Senior Staff' : 'Trainee'} • ₱${RATES[s.position].daily}/day</small>
-                                </div>
-                                <span style="color: #2196F3; font-size: 20px;">📄</span>
-                            </button>
-                        `).join('') +
-                    '</div>'
-                }
+                ${isAdminAuthenticated ? `
+                <div style="margin-bottom: 20px;">
+                    <button class="btn-warning" onclick="showMarkOptions()">📝 Mark Attendance</button>
+                </div>
+                ` : ''}
+                <div id="mark-section" style="display: none; background: #fff3cd; padding: 15px; border-radius: 4px; margin-bottom: 20px;">
+                    <h3 style="margin-bottom: 15px;">Mark Attendance</h3>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Select Staff</label>
+                            <select id="mark-staff">
+                                ${app.staff.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Date</label>
+                            <input type="date" id="mark-date" value="${new Date().toISOString().split('T')[0]}">
+                        </div>
+                        <div class="form-group">
+                            <label>Status</label>
+                            <select id="mark-status">
+                                <option value="rest">Rest Day</option>
+                                <option value="absent">Absent</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 10px; margin-top: 15px;">
+                        <button class="btn-primary" onclick="markAttendance()">✅ Save</button>
+                        <button class="btn-danger" onclick="hideMarkOptions()">Cancel</button>
+                    </div>
+                    <div id="mark-msg" class="msg" style="display: none; margin-top: 10px;"></div>
+                </div>
+                ${renderDTRTable()}
             `;
         }
 
-        function setPayrollPeriod() {
-            app.start = document.getElementById('payroll-start').value;
-            app.end = document.getElementById('payroll-end').value;
-            
-            if (!app.start || !app.end) {
-                msg('payroll-msg', '❌ Please select both dates', 'err');
-                return;
-            }
-            
-            if (new Date(app.start) > new Date(app.end)) {
-                msg('payroll-msg', '❌ Start date must be before end date', 'err');
-                return;
-            }
-            
-            msg('payroll-msg', '✅ Pay period updated!', 'ok');
-            setTimeout(() => render(), 1000);
+        function showMarkOptions() {
+            document.getElementById('mark-section').style.display = 'block';
         }
 
-        function viewPayslip(staffId) {
+        function hideMarkOptions() {
+            document.getElementById('mark-section').style.display = 'none';
+        }
+
+        function markAttendance() {
+            const sid = document.getElementById('mark-staff').value;
+            const date = document.getElementById('mark-date').value;
+            const status = document.getElementById('mark-status').value;
+            
+            if (!sid || !date) return msg('mark-msg', 'Fill all fields', 'err');
+            
+            const existing = app.records.find(r => r.sid === sid && r.date === date);
+            
+            if (existing) {
+                existing.status = status;
+                existing.in = null;
+                existing.out = null;
+            } else {
+                app.records.push({ sid, date, in: null, out: null, status });
+            }
+            
+            saveData();
+            msg('mark-msg', 'Attendance marked!', 'ok');
+            setTimeout(() => {
+                hideMarkOptions();
+                render();
+            }, 1500);
+        }
+
+        function renderDTRTable() {
+            const staffFilter = document.getElementById('view-staff')?.value || '';
+            let filtered = app.records;
+            
+            if (staffFilter) filtered = filtered.filter(r => r.sid === staffFilter);
+            if (app.start) filtered = filtered.filter(r => r.date >= app.start);
+            if (app.end) filtered = filtered.filter(r => r.date <= app.end);
+            
+            filtered.sort((a, b) => b.date.localeCompare(a.date));
+            
+            if (filtered.length === 0) {
+                return '<p style="color: #666; margin-top: 20px;">No records found for the selected criteria.</p>';
+            }
+
+            return `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Staff</th>
+                            <th>Position</th>
+                            <th>Clock In</th>
+                            <th>Clock Out</th>
+                            <th>Hours</th>
+                            <th>Status</th>
+                            ${app.adminMode ? '<th>Actions</th>' : ''}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${filtered.map(r => {
+                            const s = app.staff.find(x => x.id === r.sid);
+                            const hours = r.status ? '-' : calcH(r.in, r.out).toFixed(2);
+                            const statusLabels = { rest: '🏖️ Rest Day', absent: '❌ Absent' };
+                            const status = r.status ? statusLabels[r.status] : (r.out ? '✅ Complete' : '⏳ Ongoing');
+                            const isEditing = app.editingRecord && app.editingRecord.sid === r.sid && app.editingRecord.date === r.date;
+                            
+                            if (isEditing) {
+                                return `
+                                    <tr style="background: #fff3e0;">
+                                        <td>${r.date}</td>
+                                        <td>${s ? s.name : 'Unknown'}</td>
+                                        <td>${s ? s.position : '-'}</td>
+                                        <td><input type="time" id="edit-in" value="${r.in || ''}" class="edit-input"></td>
+                                        <td><input type="time" id="edit-out" value="${r.out || ''}" class="edit-input"></td>
+                                        <td>${hours}</td>
+                                        <td>${status}</td>
+                                        ${app.adminMode ? `
+                                            <td>
+                                                <div class="action-buttons">
+                                                    <button class="btn-save" onclick="saveEdit('${r.sid}','${r.date}')">Save</button>
+                                                    <button class="btn-cancel" onclick="cancelEdit()">Cancel</button>
+                                                </div>
+                                            </td>
+                                        ` : ''}
+                                    </tr>
+                                `;
+                            }
+                            
+                            return `
+                                <tr>
+                                    <td>${r.date}</td>
+                                    <td>${s ? s.name : 'Unknown'}</td>
+                                    <td>${s ? s.position : '-'}</td>
+                                    <td>${r.in || '-'}</td>
+                                    <td>${r.out || '-'}</td>
+                                    <td>${hours}</td>
+                                    <td>${status}</td>
+                                    ${app.adminMode ? `
+                                        <td>
+                                            <div class="action-buttons">
+                                                <button class="btn-edit" onclick="editRec('${r.sid}','${r.date}')">Edit</button>
+                                                <button class="btn-danger" onclick="delRec('${r.sid}','${r.date}')" style="padding: 6px 12px; font-size: 12px;">Delete</button>
+                                            </div>
+                                        </td>
+                                    ` : ''}
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+
+        function delRec(sid, date) {
+            if (!confirm('Delete this record?')) return;
+            app.records = app.records.filter(r => !(r.sid === sid && r.date === date));
+            saveData();
+            render();
+        }
+
+        function editRec(sid, date) {
+            const record = app.records.find(r => r.sid === sid && r.date === date);
+            if (!record) return;
+            
+            if (record.status) {
+                alert('Cannot edit records marked as Rest Day or Absent');
+                return;
+            }
+            
+            app.editingRecord = { sid, date };
+            render();
+        }
+
+        function saveEdit(sid, date) {
+            const record = app.records.find(r => r.sid === sid && r.date === date);
+            if (!record) return;
+            
+            const newIn = document.getElementById('edit-in').value;
+            const newOut = document.getElementById('edit-out').value;
+            
+            if (!newIn && !newOut) {
+                alert('Please enter at least one time');
+                return;
+            }
+            
+            record.in = newIn || null;
+            record.out = newOut || null;
+            
+            app.editingRecord = null;
+            saveData();
+            render();
+            alert('✅ Record updated successfully');
+        }
+
+        function cancelEdit() {
+            app.editingRecord = null;
+            render();
+        }
+
+        function calcH(timeIn, timeOut) {
+            if (!timeIn || !timeOut) return 0;
+            const [h1, m1] = timeIn.split(':').map(Number);
+            const [h2, m2] = timeOut.split(':').map(Number);
+            return ((h2 * 60 + m2) - (h1 * 60 + m1)) / 60;
+        }
+
+        function calcOT(timeOut) {
+            if (!timeOut) return 0;
+            const [h, m] = timeOut.split(':').map(Number);
+            // If logout is at 8pm (20:00) or later, count as 1 hour OT
+            if (h >= 20) {
+                return 1;
+            }
+            return 0;
+        }
+
+        // Round up helper function - always rounds up regardless of decimal value
+        function roundUp(value) {
+            return Math.ceil(value);
+        }
+
+        // Admin Mode Functions
+        function showAdminLogin() {
+            const password = prompt('Enter admin password:');
+            if (password === app.settings.adminPassword) {
+                app.adminMode = true;
+                render();
+                alert('✅ Admin mode activated');
+            } else if (password !== null) {
+                alert('❌ Incorrect password');
+            }
+        }
+
+        function exitAdminMode() {
+            app.adminMode = false;
+            render();
+            alert('🚪 Exited admin mode');
+        }
+
+        // Payroll View
+        function renderPayroll() {
+            return `
+                <h2>💰 Payroll</h2>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Start Date</label>
+                        <input type="date" id="pay-start" value="${app.start}" onchange="app.start=this.value; render()">
+                    </div>
+                    <div class="form-group">
+                        <label>End Date</label>
+                        <input type="date" id="pay-end" value="${app.end}" onchange="app.end=this.value; render()">
+                    </div>
+                </div>
+                ${renderPayrollTable()}
+            `;
+        }
+
+        function printPayslip(staffId) {
+            if (!app.start || !app.end) {
+                alert('Please select a date range first');
+                return;
+            }
+
             const staff = app.staff.find(s => s.id === staffId);
             if (!staff) return;
-            
-            if (!app.start || !app.end) {
-                alert('⚠️ Please set pay period first');
-                return;
-            }
 
-            // Get records for this staff in the pay period
-            const records = app.records.filter(r => {
-                const recordDate = new Date(r.date);
-                return r.sid === staffId && 
-                       recordDate >= new Date(app.start) && 
-                       recordDate <= new Date(app.end);
+            // Get records for this period
+            const recs = app.records.filter(r => {
+                const rd = new Date(r.date);
+                return r.sid === staffId && rd >= new Date(app.start) && rd <= new Date(app.end);
             });
-            console.log("=== PAYROLL DEBUG ===");
-            console.log("Staff:", staff.name);
-            console.log("Pay period:", app.start, "to", app.end);
-            console.log("Total records found:", records.length);
-            console.log("Records:", records);
 
-
-
-
-
-            // Calculate payroll
-            let fullDays = 0;
-            let partialHours = 0;
-            let totalHours = 0;
-            let overtimeDays = 0;
-            let totalLateMinutes = 0;
-            let restDays = 0;
-            let absences = 0;
-            let leaves = 0;
-
-            records.forEach(r => {
-                if (r.status === 'rest') {
-                    restDays++;
-                } else if (r.status === 'absent') {
-                    absences++;
-                } else if (r.status === 'leave') {
-                    leaves++;
-                } else if (r.in && r.out) {
-                    const hours = calculateHours(r.in, r.out);
-                    totalHours += hours;
-                    
-                    if (hours >= 9.5) {
-                        // Full day
-                        fullDays++;
-                    } else {
-                        // Partial day - count hours
-                        partialHours += hours;
-                    }
-                    
-                    totalLateMinutes += calculateLateMinutes(r.in);
-                    
-                    // Check if clocked out at 8 PM or later (automatic 1 hour OT)
-                    const [outHour, outMin] = r.out.split(':').map(Number);
-                    const outTimeIn24 = outHour * 60 + outMin; // Convert to minutes
-                    const eightPM = 20 * 60; // 8:00 PM = 20:00 = 1200 minutes
-                    
-                    if (outTimeIn24 >= eightPM) {
-                        overtimeDays++; // Count each day clocked out at/after 8 PM
-                    }
+            // Calculate working days and overtime
+            let workingDays = 0;
+            let overtimeHours = 0;
+            
+            recs.forEach(r => {
+                if (!r.status) {
+                    const h = calcH(r.in, r.out);
+                    if (h >= 9.5) workingDays++;
+                    overtimeHours += calcOT(r.out);
                 }
             });
-            
-            console.log("Full days:", fullDays);
-            console.log("Undertime:", partialHours);
-            console.log("Overtime:", overtimeDays);
-            console.log("Total hours:", totalHours);
-            console.log("==================");
 
-            const rate = RATES[staff.position];
-            
-            // Calculate hourly rate from daily rate (daily rate ÷ 12 hours)
-            const hourlyRate = rate.daily / 12;
-            
-            // Calculate gross pay: (full days × daily rate) + (partial hours × hourly rate) + overtime
-            const fullDaysPay = fullDays * rate.daily;
-            const partialHoursPay = partialHours * hourlyRate;
-            const overtimePay = overtimeDays * rate.ot;
-            const grossPay = fullDaysPay + partialHoursPay + overtimePay;
-            
-            // Calculate late penalty using hourly rate
-            const latePenalty = (totalLateMinutes / 60) * hourlyRate;
-            const netPay = grossPay - latePenalty;
-            document.getElementById('view').innerHTML = `
-                <div class="no-print">
-                    <button onclick="render()" style="margin-bottom: 20px; background: #9C27B0; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer;">← Back to Payroll</button>
-                </div>
-                
-                <div style="max-width: 800px; margin: 0 auto;">
-                    <h2 style="text-align: center; margin-bottom: 10px;">${staff.name}</h2>
-                    <p style="text-align: center; color: #666; margin-bottom: 30px;">
-                        ${staff.position === 'regular' ? 'Regular Staff' : staff.position === 'senior' ? 'Senior Staff' : 'Trainee'}
-                    </p>
-                    
-                    <div style="background: #f9f9f9; padding: 15px; border-radius: 6px; margin-bottom: 20px;">
-                        <strong>Pay Period:</strong> ${app.start} to ${app.end}
+            const rt = RATES[staff.position];
+            const regularPay = roundUp(workingDays * rt.daily);
+            const overtimePay = roundUp(overtimeHours * rt.ot);
+            const gross = regularPay + overtimePay;
+
+            // Get deductions for this period
+            const deductionsInPeriod = app.deductions.filter(d => {
+                const deductDate = new Date(d.deductionDate);
+                return d.staffId === staffId && 
+                       deductDate >= new Date(app.start) && 
+                       deductDate <= new Date(app.end) &&
+                       d.status === 'pending';
+            });
+
+            const totalDeductions = roundUp(deductionsInPeriod.reduce((sum, d) => sum + d.amount, 0));
+            const net = gross - totalDeductions;
+
+            // Create simplified printable payslip
+            const printWindow = window.open('', '', 'width=800,height=600');
+            printWindow.document.write(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Payslip - ${staff.name}</title>
+                    <style>
+                        * { margin: 0; padding: 0; box-sizing: border-box; }
+                        body { 
+                            font-family: Arial, sans-serif; 
+                            padding: 40px;
+                            background: white;
+                        }
+                        .payslip {
+                            max-width: 700px;
+                            margin: 0 auto;
+                            border: 2px solid #333;
+                            padding: 30px;
+                        }
+                        .header {
+                            text-align: center;
+                            border-bottom: 3px solid #2196F3;
+                            padding-bottom: 20px;
+                            margin-bottom: 30px;
+                        }
+                        .header h1 {
+                            font-size: 28px;
+                            color: #2196F3;
+                            margin-bottom: 10px;
+                        }
+                        .header h2 {
+                            font-size: 18px;
+                            color: #666;
+                        }
+                        table {
+                            width: 100%;
+                            border-collapse: collapse;
+                            margin: 20px 0;
+                        }
+                        th {
+                            background: #2196F3;
+                            color: white;
+                            padding: 12px;
+                            text-align: left;
+                            border: 1px solid #ddd;
+                        }
+                        td {
+                            padding: 10px 12px;
+                            border: 1px solid #ddd;
+                        }
+                        tr:nth-child(even) {
+                            background: #f9f9f9;
+                        }
+                        .total-row {
+                            background: #e3f2fd !important;
+                            font-weight: bold;
+                            font-size: 16px;
+                        }
+                        .signatures {
+                            display: grid;
+                            grid-template-columns: 1fr 1fr;
+                            gap: 40px;
+                            margin-top: 50px;
+                        }
+                        .signature-box {
+                            text-align: center;
+                        }
+                        .signature-line {
+                            border-top: 2px solid #333;
+                            margin-top: 50px;
+                            padding-top: 10px;
+                        }
+                        @media print {
+                            body { padding: 20px; }
+                            .no-print { display: none; }
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="payslip">
+                        <div class="header">
+                            <h1>SIR RAMOS DRUGSTORE</h1>
+                            <h2>PAYSLIP</h2>
+                            <p style="margin-top: 10px; color: #666;">
+                                ${new Date(app.start).toLocaleDateString()} - ${new Date(app.end).toLocaleDateString()}
+                            </p>
+                        </div>
+
+                        <table>
+                            <tr>
+                                <th>Employee Name</th>
+                                <td colspan="2">${staff.name}</td>
+                            </tr>
+                            <tr>
+                                <th>Rate per Day x Days Worked</th>
+                                <td colspan="2">₱${roundUp(rt.daily)} x ${workingDays}</td>
+                            </tr>
+                            <tr>
+                                <th>Regular Pay</th>
+                                <td colspan="2">₱${regularPay}</td>
+                            </tr>
+                            ${overtimeHours > 0 ? `
+                            <tr>
+                                <th>Overtime Hours</th>
+                                <td colspan="2">${overtimeHours} hr @ ₱${roundUp(rt.ot)}/hr</td>
+                            </tr>
+                            <tr>
+                                <th>Overtime Pay</th>
+                                <td colspan="2">₱${overtimePay}</td>
+                            </tr>
+                            ` : ''}
+                            <tr>
+                                <th>Gross Pay</th>
+                                <td colspan="2">₱${gross}</td>
+                            </tr>
+                            ${totalDeductions > 0 ? `
+                            <tr>
+                                <th>Deductions</th>
+                                <td colspan="2" style="color: #f44336;">-₱${totalDeductions}</td>
+                            </tr>
+                            ${deductionsInPeriod.map(d => `
+                            <tr>
+                                <th style="padding-left: 30px; font-weight: normal; background: #f9f9f9;">• ${d.reason || 'Cash Advance'}</th>
+                                <td colspan="2" style="color: #f44336; background: #f9f9f9;">-₱${roundUp(d.amount)}</td>
+                            </tr>
+                            `).join('')}
+                            ` : ''}
+                            <tr class="total-row">
+                                <th>NET PAY</th>
+                                <td colspan="2">₱${net}</td>
+                            </tr>
+                        </table>
+
+                        <div class="signatures">
+                            <div class="signature-box">
+                                <div class="signature-line">
+                                    <strong>Employee Signature</strong>
+                                </div>
+                            </div>
+                            <div class="signature-box">
+                                <div class="signature-line">
+                                    <strong>Authorized Signature</strong>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    
-                    ${(restDays > 0 || absences > 0 || leaves > 0) ? `
-                        <div style="background: #fff3cd; padding: 15px; border-radius: 6px; margin-bottom: 20px; border-left: 4px solid #FF9800;">
-                            <strong>📋 Attendance Summary</strong><br>
-                            ${restDays > 0 ? `<small>🏖️ Rest Days: ${restDays}</small><br>` : ''}
-                            ${leaves > 0 ? `<small>🏥 Leaves: ${leaves}</small><br>` : ''}
-                            ${absences > 0 ? `<small>❌ Absences: ${absences}</small>` : ''}
-                        </div>
-                    ` : ''}
-                    
-                    
-                    
-                    
-                    <h3 style="border-bottom: 2px solid #333; padding-bottom: 5px; margin-bottom: 15px;">Earnings</h3>
-                    
-                    ${fullDays > 0 ? `
-                        <div style="display: flex; justify-content: space-between; padding: 12px; border-bottom: 1px solid #ddd;">
-                            <span>Full Days</span>
-                            <span>${fullDays} days</span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; padding: 12px; border-bottom: 1px solid #ddd; padding-left: 30px;">
-                            <span>Daily Rate: ₱${rate.daily.toFixed(2)} × ${fullDays}</span>
-                            <span>₱${fullDaysPay.toFixed(2)}</span>
-                        </div>
-                    ` : ''}
-                    
-                    ${partialHours > 0 ? `
-                        <div style="display: flex; justify-content: space-between; padding: 12px; border-bottom: 1px solid #ddd;">
-                            <span>Undertime</span>
-                            <span>${partialHours.toFixed(2)} hours</span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; padding: 12px; border-bottom: 1px solid #ddd; padding-left: 30px;">
-                            <span>Hourly Rate: ₱${hourlyRate.toFixed(2)} × ${partialHours.toFixed(2)}</span>
-                            <span>₱${partialHoursPay.toFixed(2)}</span>
-                        </div>
-                    ` : ''}
-                    
-                    ${overtimeDays > 0 ? `
-                        <div style="display: flex; justify-content: space-between; padding: 12px; border-bottom: 1px solid #ddd; background: #fff8e1;">
-                            <span><strong>Overtime</strong></span>
-                            <span><strong>${overtimeDays} days (${overtimeDays} hrs)</strong></span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; padding: 12px; border-bottom: 1px solid #ddd; padding-left: 30px; background: #fff8e1;">
-                            <span>OT Rate: ₱${rate.ot.toFixed(2)} × ${overtimeDays}</span>
-                            <span><strong style="color: #F57C00;">₱${overtimePay.toFixed(2)}</strong></span>
-                        </div>
-                    ` : ''}
-                    
-                    <div style="display: flex; justify-content: space-between; padding: 12px; border-bottom: 1px solid #ddd; background: #f9f9f9;">
-                        <span><strong>Total Hours Worked</strong></span>
-                        <span><strong>${totalHours.toFixed(2)} hours</strong></span>
-                    </div>
-                    
-                    <div style="display: flex; justify-content: space-between; padding: 15px; background: #f5f5f5; font-weight: bold; border: 2px solid #333; margin: 10px 0;">
-                        <span>GROSS PAY</span>
-                        <span>₱${grossPay.toFixed(2)}</span>
-                    </div>
-                    
-                    <h3 style="border-bottom: 2px solid #333; padding-bottom: 5px; margin-top: 30px; margin-bottom: 15px;">Deductions</h3>
-                    <div style="display: flex; justify-content: space-between; padding: 12px; border-bottom: 1px solid #ddd;">
-                        <span>Late (${totalLateMinutes} minutes)</span>
-                        <span style="color: #f44336;">-₱${latePenalty.toFixed(2)}</span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; padding: 15px; background: #f5f5f5; font-weight: bold; border: 2px solid #333; margin: 10px 0;">
-                        <span>TOTAL DEDUCTIONS</span>
-                        <span style="color: #f44336;">₱${latePenalty.toFixed(2)}</span>
-                    </div>
-                    
-                    <div style="display: flex; justify-content: space-between; padding: 20px; background: #E8F5E9; font-weight: bold; font-size: 20px; border: 2px solid #333; margin: 20px 0;">
-                        <span>NET PAY</span>
-                        <span style="color: #4CAF50;">₱${netPay.toFixed(2)}</span>
-                    </div>
-                    
+
                     <div class="no-print" style="text-align: center; margin-top: 30px;">
-                        <button onclick="window.print()" style="background: #2196F3; color: white; padding: 15px 30px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: bold;">
+                        <button onclick="window.print()" style="padding: 12px 30px; background: #2196F3; color: white; border: none; border-radius: 4px; font-size: 16px; cursor: pointer;">
                             🖨️ Print Payslip
                         </button>
+                        <button onclick="window.close()" style="padding: 12px 30px; background: #666; color: white; border: none; border-radius: 4px; font-size: 16px; cursor: pointer; margin-left: 10px;">
+                            Close
+                        </button>
                     </div>
-                </div>
+                </body>
+                </html>
+            `);
+            printWindow.document.close();
+        }
+
+        function renderPayrollTable() {
+            if (!app.start || !app.end) {
+                return '<p style="color: #666; margin-top: 20px;">Please select date range to calculate payroll.</p>';
+            }
+
+            const payrollData = app.staff.map(s => {
+                const recs = app.records.filter(r => {
+                    const rd = new Date(r.date);
+                    return r.sid === s.id && rd >= new Date(app.start) && rd <= new Date(app.end);
+                });
+
+                let workingDays = 0;
+                let overtimeHours = 0;
+                recs.forEach(r => {
+                    if (!r.status) {
+                        const h = calcH(r.in, r.out);
+                        if (h >= 9.5) workingDays++;
+                        overtimeHours += calcOT(r.out);
+                    }
+                });
+
+                const rt = RATES[s.position];
+                const regularPay = roundUp(workingDays * rt.daily);
+                const overtimePay = roundUp(overtimeHours * rt.ot);
+                const gross = regularPay + overtimePay;
+                
+                // NEW: Calculate total deductions for this period
+                const deductionsInPeriod = app.deductions.filter(d => {
+                    const deductDate = new Date(d.deductionDate);
+                    return d.staffId === s.id && 
+                           deductDate >= new Date(app.start) && 
+                           deductDate <= new Date(app.end) &&
+                           d.status === 'pending';
+                });
+                
+                const totalDeductions = roundUp(deductionsInPeriod.reduce((sum, d) => sum + d.amount, 0));
+                const net = gross - totalDeductions;
+
+                return { s, workingDays, overtimeHours, regularPay, overtimePay, gross, totalDeductions, net, deductionsInPeriod };
+            });
+
+            return `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Staff</th>
+                            <th>Position</th>
+                            <th>Working Days</th>
+                            <th>OT Hours</th>
+                            <th>Regular Pay</th>
+                            <th>OT Pay</th>
+                            <th>Gross Pay</th>
+                            <th>Deductions</th>
+                            <th>Net Pay</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${payrollData.map(p => `
+                            <tr>
+                                <td>${p.s.name}</td>
+                                <td>${p.s.position}</td>
+                                <td>${p.workingDays}</td>
+                                <td>${p.overtimeHours}</td>
+                                <td>₱${p.regularPay}</td>
+                                <td>${p.overtimeHours > 0 ? '₱' + p.overtimePay : '-'}</td>
+                                <td>₱${p.gross}</td>
+                                <td style="color: ${p.totalDeductions > 0 ? '#f44336' : '#666'};">
+                                    ${p.totalDeductions > 0 ? '-₱' + p.totalDeductions : '₱0'}
+                                    ${p.deductionsInPeriod.length > 0 ? `<br><small style="color: #666;">(${p.deductionsInPeriod.length} deduction${p.deductionsInPeriod.length > 1 ? 's' : ''})</small>` : ''}
+                                </td>
+                                <td><strong>₱${p.net}</strong></td>
+                                <td>
+                                    <button class="btn-primary" onclick="printPayslip('${p.s.id}')" style="padding: 8px 16px; font-size: 13px;">
+                                        🖨️ Print
+                                    </button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
             `;
         }
 
-        function calculateHours(timeIn, timeOut) {
-            if (!timeIn || !timeOut) return 0;
-            
-            const [inHour, inMin] = timeIn.split(':').map(Number);
-            const [outHour, outMin] = timeOut.split(':').map(Number);
-            
-            const inMinutes = inHour * 60 + inMin;
-            const outMinutes = outHour * 60 + outMin;
-            
-            let totalMinutes = outMinutes - inMinutes;
-            if (totalMinutes < 0) totalMinutes += 24 * 60; // Handle overnight
-            
-            // Subtract 1 hour lunch break
-            totalMinutes = Math.max(0, totalMinutes - 60);
-            
-            return totalMinutes / 60;
-        }
-
-        function calculateLateMinutes(timeIn) {
-            if (!timeIn) return 0;
-            
-            const [hour, min] = timeIn.split(':').map(Number);
-            const inMinutes = hour * 60 + min;
-            const startTime = 7 * 60 + 30; // 7:30 AM
-            const graceMinutes = 5;
-            
-            return Math.max(0, inMinutes - startTime - graceMinutes);
-        }
-
-
-        function renderDevices() {
-            const authorizedDevices = JSON.parse(localStorage.getItem('authorizedDevices') || '[]');
-            const currentDevice = getDeviceId();
-            
-            console.log('=== DEVICE DEBUG ===');
-            console.log('Total authorized devices:', authorizedDevices.length);
-            console.log('Authorized devices:', authorizedDevices);
-            console.log('Current device:', currentDevice);
-            console.log('==================');
-            
+        // NEW: Deductions View
+        function renderDeductions() {
             return `
-                <h2>📱 Device Management</h2>
+                <h2>💸 Cash Advance & Deductions</h2>
                 
                 <div style="background: #e3f2fd; padding: 15px; border-radius: 4px; margin-bottom: 20px; border-left: 4px solid #2196F3;">
-                    <strong>ℹ️ About Device Authorization</strong><br>
-                    <small>Control which devices can access this system. Unauthorized devices can only clock in/out.</small>
+                    <strong>ℹ️ How it works:</strong><br>
+                    <small>Record cash advances given to employees. Set a deduction date, and the amount will be automatically deducted from their salary on that date's payroll period.</small>
                 </div>
-                
-                <div style="background: #e8f5e9; padding: 20px; border-radius: 6px; margin-bottom: 20px; border-left: 4px solid #4CAF50;">
-                    <h3 style="margin: 0 0 15px 0;">📱 Your Current Device</h3>
-                    <div style="background: white; padding: 15px; border-radius: 4px; margin-bottom: 15px;">
-                        <p style="font-size: 12px; color: #666; margin-bottom: 5px;">Device ID:</p>
-                        <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 10px;">
-                            <input type="text" id="current-device-display" value="${currentDevice}" readonly
-                                style="flex: 1; font-family: monospace; font-size: 12px; background: #f5f5f5; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
-                            <button onclick="copyCurrentDeviceId()" style="background: #2196F3; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; white-space: nowrap;">
-                                📋 Copy
-                            </button>
+
+                <div style="background: white; padding: 20px; border-radius: 6px; border: 1px solid #e0e0e0; margin-bottom: 20px;">
+                    <h3 style="margin-bottom: 15px; color: #333;">➕ Record New Cash Advance</h3>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Select Employee</label>
+                            <select id="deduction-staff">
+                                <option value="">Choose employee...</option>
+                                ${app.staff.map(s => `<option value="${s.id}">${s.name} (${s.position})</option>`).join('')}
+                            </select>
                         </div>
-                        <p style="font-size: 12px; color: #666;">
-                            Status: ${authorizedDevices.includes(currentDevice) || authorizedDevices.length === 0 ? '<strong style="color: #4CAF50;">✅ Authorized</strong>' : '<strong style="color: #f44336;">❌ Not Authorized</strong>'}
-                        </p>
+                        <div class="form-group">
+                            <label>Amount (₱)</label>
+                            <input type="number" id="deduction-amount" placeholder="Enter amount" min="0" step="0.01">
+                        </div>
+                        <div class="form-group">
+                            <label>Deduction Date</label>
+                            <input type="date" id="deduction-date" value="${new Date().toISOString().split('T')[0]}">
+                        </div>
+                        <div class="form-group">
+                            <label>Reason (Optional)</label>
+                            <input type="text" id="deduction-reason" placeholder="e.g., Cash advance, Loan">
+                        </div>
                     </div>
-                    ${!authorizedDevices.includes(currentDevice) && authorizedDevices.length > 0 ? `
-                        <button class="btn-primary" onclick="authCurrentDevice()">✅ Authorize This Device</button>
-                    ` : ''}
+                    <button class="btn-primary" onclick="addDeduction()" style="margin-top: 10px;">💾 Record Cash Advance</button>
+                    <div id="deduction-msg" class="msg" style="display: none;"></div>
                 </div>
-                
-                <h3 style="margin-bottom: 15px;">All Authorized Devices (${authorizedDevices.length})</h3>
-                
-                <div style="background: #fff3cd; padding: 10px; border-radius: 4px; margin-bottom: 15px; font-size: 13px;">
-                    ${authorizedDevices.length === 0 
-                        ? '⚠️ <strong>No devices authorized.</strong> Any device can access the system. Add at least one device for security.' 
-                        : `✅ <strong>${authorizedDevices.length} device(s)</strong> currently authorized to access admin features.`
-                    }
-                </div>
-                
-                ${authorizedDevices.length === 0 ? `
-                    <div style="background: #f9f9f9; padding: 30px; border-radius: 6px; text-align: center; color: #666;">
-                        <p style="font-size: 16px; margin-bottom: 15px;">📱 No devices authorized yet</p>
-                        <p style="margin-bottom: 20px;">Click the button below to authorize this device</p>
-                        <button class="btn-primary" onclick="authCurrentDevice()">✅ Authorize This Device</button>
-                    </div>
-                ` : `
-                    <div style="overflow-x: auto;">
-                        <table style="width: 100%; margin-bottom: 20px;">
+
+                ${renderDeductionsList()}
+            `;
+        }
+
+        function renderDeductionsList() {
+            if (app.deductions.length === 0) {
+                return '<p style="color: #666; text-align: center; padding: 40px;">No deductions recorded yet.</p>';
+            }
+
+            const pending = app.deductions.filter(d => d.status === 'pending');
+            const applied = app.deductions.filter(d => d.status === 'applied');
+
+            return `
+                ${pending.length > 0 ? `
+                    <div style="margin-bottom: 30px;">
+                        <h3 style="margin-bottom: 15px; color: #FF9800;">⏳ Pending Deductions</h3>
+                        <table>
                             <thead>
                                 <tr>
-                                    <th style="width: 40%;">Device ID</th>
-                                    <th style="width: 25%;">Nickname</th>
-                                    <th style="width: 20%;">Last Active</th>
-                                    <th style="width: 15%;">Actions</th>
+                                    <th>Date Recorded</th>
+                                    <th>Employee</th>
+                                    <th>Amount</th>
+                                    <th>Deduction Date</th>
+                                    <th>Reason</th>
+                                    <th>Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                ${authorizedDevices.map((deviceId, index) => {
-                                    const deviceInfo = JSON.parse(localStorage.getItem('deviceInfo_' + deviceId) || '{}');
-                                    const isCurrent = deviceId === currentDevice;
-                                    const lastSeen = deviceInfo.lastSeen ? 
-                                        new Date(deviceInfo.lastSeen).toLocaleString('en-PH', {
-                                            month: 'short',
-                                            day: 'numeric',
-                                            hour: '2-digit',
-                                            minute: '2-digit'
-                                        }) : 
-                                        'Never';
-                                    
+                                ${pending.map(d => {
+                                    const staff = app.staff.find(s => s.id === d.staffId);
+                                    const isPast = new Date(d.deductionDate) < new Date();
                                     return `
-                                        <tr style="${isCurrent ? 'background: #e8f5e9; border-left: 4px solid #4CAF50;' : ''}">
+                                        <tr class="deduction-item">
+                                            <td>${new Date(d.createdDate).toLocaleDateString()}</td>
+                                            <td>${staff ? staff.name : 'Unknown'}</td>
+                                            <td><strong style="color: #f44336;">₱${d.amount.toFixed(2)}</strong></td>
                                             <td>
-                                                ${isCurrent ? '<span style="background: #4CAF50; color: white; padding: 2px 8px; border-radius: 3px; font-size: 10px; margin-bottom: 5px; display: inline-block;">THIS DEVICE</span><br>' : ''}
-                                                <span style="font-family: monospace; font-size: 11px; color: #666; word-break: break-all;">${deviceId}</span>
+                                                ${new Date(d.deductionDate).toLocaleDateString()}
+                                                ${isPast ? '<br><small style="color: #f44336;">⚠️ Past due</small>' : ''}
                                             </td>
+                                            <td>${d.reason || '-'}</td>
                                             <td>
-                                                <input type="text" 
-                                                    value="${deviceInfo.nickname || ''}" 
-                                                    placeholder="e.g., Manager's Phone" 
-                                                    onchange="setDeviceNickname('${deviceId}', this.value)"
-                                                    style="width: 100%; padding: 6px; font-size: 13px; border: 1px solid #ddd; border-radius: 4px;">
-                                            </td>
-                                            <td style="font-size: 12px; color: #666;">${lastSeen}</td>
-                                            <td style="text-align: center;">
-                                                ${!isCurrent 
-                                                    ? `<button class="btn-danger" onclick="revokeDevice('${deviceId}')" style="padding: 6px 12px; font-size: 12px;">🗑️ Remove</button>` 
-                                                    : '<span style="color: #999; font-size: 11px; font-style: italic;">Current</span>'
-                                                }
+                                                <div class="action-buttons">
+                                                    <button class="btn-warning" onclick="markDeductionApplied('${d.id}')" style="padding: 6px 12px; font-size: 12px;">
+                                                        ✅ Mark Applied
+                                                    </button>
+                                                    <button class="btn-danger" onclick="deleteDeduction('${d.id}')" style="padding: 6px 12px; font-size: 12px;">
+                                                        🗑️ Delete
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     `;
@@ -1625,533 +1474,625 @@
                             </tbody>
                         </table>
                     </div>
-                `}
-                
-                <div id="dev-msg"></div>
-                
-                <div style="margin-top: 30px; display: flex; gap: 10px; flex-wrap: wrap;">
-                    <button class="btn-primary" onclick="addNewDevice()">➕ Add Device Manually</button>
-                    <button class="btn-warning" onclick="exportDevices()">📥 Export Devices</button>
-                    <label class="btn-warning" style="display: inline-block; cursor: pointer;">
-                        📤 Import Devices
-                        <input type="file" accept=".json" onchange="importDevices(event)" style="display: none;">
-                    </label>
-                    ${authorizedDevices.length > 0 ? `
-                        <button onclick="clearAllDevices()" style="background: #f44336; color: white; padding: 12px 24px; border: none; border-radius: 4px; cursor: pointer;">
-                            🗑️ Clear All Devices
-                        </button>
-                    ` : ''}
-                </div>
-                
-                <div style="margin-top: 30px; padding: 15px; background: #f9f9f9; border-radius: 6px;">
-                    <h4 style="margin-bottom: 10px;">💡 Tips:</h4>
-                    <ul style="margin-left: 20px; line-height: 1.8; color: #666; font-size: 14px;">
-                        <li>Give each device a nickname (e.g., "Front Desk PC", "Manager's Phone")</li>
-                        <li>Nicknames appear in Telegram notifications</li>
-                        <li>Unauthorized devices can only clock in/out</li>
-                        <li>To authorize a new device, get its Device ID and click "Add Device Manually"</li>
-                    </ul>
-                </div>
+                ` : ''}
+
+                ${applied.length > 0 ? `
+                    <div>
+                        <h3 style="margin-bottom: 15px; color: #4CAF50;">✅ Applied Deductions</h3>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Date Recorded</th>
+                                    <th>Employee</th>
+                                    <th>Amount</th>
+                                    <th>Deduction Date</th>
+                                    <th>Reason</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${applied.map(d => {
+                                    const staff = app.staff.find(s => s.id === d.staffId);
+                                    return `
+                                        <tr style="opacity: 0.7;">
+                                            <td>${new Date(d.createdDate).toLocaleDateString()}</td>
+                                            <td>${staff ? staff.name : 'Unknown'}</td>
+                                            <td>₱${d.amount.toFixed(2)}</td>
+                                            <td>${new Date(d.deductionDate).toLocaleDateString()}</td>
+                                            <td>${d.reason || '-'}</td>
+                                            <td>
+                                                <button class="btn-danger" onclick="deleteDeduction('${d.id}')" style="padding: 6px 12px; font-size: 12px;">
+                                                    🗑️ Delete
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                ` : ''}
             `;
         }
 
-        function copyCurrentDeviceId() {
-            const input = document.getElementById('current-device-display');
-            input.select();
-            input.setSelectionRange(0, 99999);
-            
-            try {
-                document.execCommand('copy');
-                msg('dev-msg', '✅ Device ID copied to clipboard!', 'ok');
-            } catch (err) {
-                alert('Device ID: ' + input.value);
+        function addDeduction() {
+            const staffId = document.getElementById('deduction-staff').value;
+            const amount = parseFloat(document.getElementById('deduction-amount').value);
+            const deductionDate = document.getElementById('deduction-date').value;
+            const reason = document.getElementById('deduction-reason').value.trim();
+
+            if (!staffId || !amount || !deductionDate) {
+                return msg('deduction-msg', '❌ Please fill all required fields', 'err');
             }
-        }
 
-        function addNewDevice() {
-            const deviceId = prompt('Enter the Device ID to authorize:\n\n(Users can find this at the bottom of their Clock In/Out screen under "Device Information")');
-            
-            if (!deviceId || !deviceId.trim()) return;
-            
-            const cleanId = deviceId.trim();
-            const authorizedDevices = JSON.parse(localStorage.getItem('authorizedDevices') || '[]');
-            
-            if (authorizedDevices.includes(cleanId)) {
-                msg('dev-msg', '⚠️ This device is already authorized', 'err');
-                return;
+            if (amount <= 0) {
+                return msg('deduction-msg', '❌ Amount must be greater than 0', 'err');
             }
-            
-            authorizedDevices.push(cleanId);
-            localStorage.setItem('authorizedDevices', JSON.stringify(authorizedDevices));
-            
-            msg('dev-msg', '✅ Device authorized successfully!', 'ok');
-            render();
-        }
 
-        function clearAllDevices() {
-            if (!confirm('⚠️ WARNING: This will remove ALL authorized devices.\n\nAfter this, any device can access the system.\n\nAre you sure?')) {
-                return;
+            const staff = app.staff.find(s => s.id === staffId);
+            if (!staff) {
+                return msg('deduction-msg', '❌ Invalid employee selected', 'err');
             }
-            
-            if (!confirm('This action cannot be undone. Continue?')) {
-                return;
-            }
-            
-            localStorage.removeItem('authorizedDevices');
-            msg('dev-msg', '✅ All devices cleared. Any device can now access the system.', 'ok');
-            render();
-        }
 
-
-        function updateDeviceActivity() {
-            const currentDevice = getDeviceId();
-            const deviceInfo = JSON.parse(localStorage.getItem('deviceInfo_' + currentDevice) || '{}');
-            deviceInfo.lastSeen = Date.now();
-            localStorage.setItem('deviceInfo_' + currentDevice, JSON.stringify(deviceInfo));
-        }
-
-        function setDeviceNickname(deviceId, nickname) {
-            const deviceInfo = JSON.parse(localStorage.getItem('deviceInfo_' + deviceId) || '{}');
-            deviceInfo.nickname = nickname;
-            localStorage.setItem('deviceInfo_' + deviceId, JSON.stringify(deviceInfo));
-            msg('dev-msg', '✅ Nickname saved', 'ok');
-        }
-
-        function authCurrentDevice() {
-            const authorizedDevices = JSON.parse(localStorage.getItem('authorizedDevices') || '[]');
-            const currentDevice = getDeviceId();
-            
-            if (authorizedDevices.includes(currentDevice)) {
-                msg('dev-msg', 'ℹ️ This device is already authorized', 'ok');
-                return;
-            }
-            
-            authorizedDevices.push(currentDevice);
-            localStorage.setItem('authorizedDevices', JSON.stringify(authorizedDevices));
-            
-            msg('dev-msg', '✅ This device has been authorized', 'ok');
-            setTimeout(render, 1500);
-        }
-
-        function revokeDevice(deviceId) {
-            if (!confirm('Revoke this device?\n\nIt will no longer be able to access the system.')) return;
-            
-            let authorizedDevices = JSON.parse(localStorage.getItem('authorizedDevices') || '[]');
-            authorizedDevices = authorizedDevices.filter(d => d !== deviceId);
-            
-            localStorage.setItem('authorizedDevices', JSON.stringify(authorizedDevices));
-            localStorage.removeItem('deviceInfo_' + deviceId);
-            
-            msg('dev-msg', '✅ Device revoked', 'ok');
-            setTimeout(render, 1500);
-        }
-
-        function exportDevices() {
-            const authorizedDevices = JSON.parse(localStorage.getItem('authorizedDevices') || '[]');
-            
-            if (authorizedDevices.length === 0) {
-                msg('dev-msg', '❌ No devices to export', 'err');
-                return;
-            }
-            
-            const exportData = {
-                exportDate: new Date().toISOString(),
-                devices: authorizedDevices.map(deviceId => {
-                    const deviceInfo = JSON.parse(localStorage.getItem('deviceInfo_' + deviceId) || '{}');
-                    return {
-                        deviceId,
-                        nickname: deviceInfo.nickname || '',
-                        lastSeen: deviceInfo.lastSeen || null
-                    };
-                })
+            const deduction = {
+                id: 'ded-' + Date.now(),
+                staffId: staffId,
+                amount: amount,
+                deductionDate: deductionDate,
+                reason: reason || 'Cash advance',
+                status: 'pending',
+                createdDate: new Date().toISOString()
             };
+
+            app.deductions.push(deduction);
+            saveData();
+
+            document.getElementById('deduction-staff').value = '';
+            document.getElementById('deduction-amount').value = '';
+            document.getElementById('deduction-date').value = new Date().toISOString().split('T')[0];
+            document.getElementById('deduction-reason').value = '';
+
+            msg('deduction-msg', `✅ Cash advance of ₱${amount.toFixed(2)} recorded for ${staff.name}`, 'ok');
             
-            const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `authorized-devices-${new Date().toISOString().split('T')[0]}.json`;
-            a.click();
-            URL.revokeObjectURL(url);
+            // Send Telegram notification
+            if (app.settings.telegram.enabled && app.settings.telegram.notifications.newDeduction) {
+                const notifMessage = `💸 <b>New Deduction Recorded</b>\\n\\n` +
+                    `<b>Employee:</b> ${staff.name}\\n` +
+                    `<b>Amount:</b> ₱${amount.toFixed(2)}\\n` +
+                    `<b>Reason:</b> ${deduction.reason}\\n` +
+                    `<b>Deduction Date:</b> ${new Date(deductionDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}\\n` +
+                    `<b>Recorded:</b> ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`;
+                sendTelegramNotification(notifMessage);
+            }
             
-            msg('dev-msg', '✅ Device list exported', 'ok');
+            setTimeout(() => {
+                render();
+            }, 1500);
         }
 
-        function importDevices(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-            
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                try {
-                    const data = JSON.parse(e.target.result);
-                    
-                    if (!data.devices || !Array.isArray(data.devices)) {
-                        throw new Error('Invalid file format');
-                    }
-                    
-                    if (!confirm(`Import ${data.devices.length} device(s)?\n\nThis will ADD to your current authorized devices (not replace).`)) {
-                        return;
-                    }
-                    
-                    const authorizedDevices = JSON.parse(localStorage.getItem('authorizedDevices') || '[]');
-                    let addedCount = 0;
-                    
-                    data.devices.forEach(device => {
-                        if (!authorizedDevices.includes(device.deviceId)) {
-                            authorizedDevices.push(device.deviceId);
-                            addedCount++;
-                        }
-                        
-                        const deviceInfo = {
-                            nickname: device.nickname || '',
-                            lastSeen: device.lastSeen || null
-                        };
-                        localStorage.setItem('deviceInfo_' + device.deviceId, JSON.stringify(deviceInfo));
-                    });
-                    
-                    localStorage.setItem('authorizedDevices', JSON.stringify(authorizedDevices));
-                    
-                    msg('dev-msg', `✅ Imported ${addedCount} new device(s)!`, 'ok');
-                    setTimeout(render, 1500);
-                    
-                } catch (err) {
-                    alert('Error importing device list: ' + err.message);
+        function markDeductionApplied(deductionId) {
+            if (!confirm('Mark this deduction as applied? This means it has been deducted from the employee\'s salary.')) {
+                return;
+            }
+
+            const deduction = app.deductions.find(d => d.id === deductionId);
+            if (deduction) {
+                deduction.status = 'applied';
+                saveData();
+                render();
+            }
+        }
+
+        function deleteDeduction(deductionId) {
+            if (!confirm('Delete this deduction record? This action cannot be undone.')) {
+                return;
+            }
+
+            app.deductions = app.deductions.filter(d => d.id !== deductionId);
+            saveData();
+            render();
+        }
+
+        // Staff View
+        function renderStaff() {
+            return `
+                <h2>👥 Manage Staff</h2>
+                <div style="background: white; padding: 20px; border-radius: 6px; border: 1px solid #e0e0e0; margin-bottom: 20px;">
+                    <h3 style="margin-bottom: 15px;">➕ Add New Staff</h3>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Full Name</label>
+                            <input type="text" id="new-name" placeholder="Enter full name">
+                        </div>
+                        <div class="form-group">
+                            <label>Position</label>
+                            <select id="new-position">
+                                <option value="regular">Regular Staff (₱650/day)</option>
+                                <option value="senior">Senior Staff (₱700/day)</option>
+                                <option value="trainee">Trainee (₱500/day)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>PIN Code (4 digits)</label>
+                            <input type="text" id="new-pin" placeholder="1234" maxlength="4">
+                        </div>
+                    </div>
+                    <button class="btn-primary" onclick="addStaff()">💾 Add Staff Member</button>
+                    <div id="staff-msg" class="msg" style="display: none;"></div>
+                </div>
+                
+                <h3 style="margin-bottom: 15px;">Current Staff (${app.staff.length})</h3>
+                ${app.staff.length === 0 ? '<p style="color: #666;">No staff members yet. Add one above!</p>' : 
+                    app.staff.map(s => `
+                        <div class="item">
+                            <div>
+                                <strong style="font-size: 16px;">${s.name}</strong><br>
+                                <span style="color: #666; font-size: 14px;">
+                                    ${s.position.charAt(0).toUpperCase() + s.position.slice(1)} • 
+                                    ₱${RATES[s.position].daily}/day • 
+                                    PIN: ${'*'.repeat(4)}
+                                </span>
+                            </div>
+                            <div class="action-buttons">
+                                <button class="btn-warning" onclick="openEditModal('${s.id}')" style="padding: 8px 16px;">
+                                    ✏️ Edit
+                                </button>
+                                <button class="btn-danger" onclick="delStaff('${s.id}')" style="padding: 8px 16px;">
+                                    🗑️ Delete
+                                </button>
+                            </div>
+                        </div>
+                    `).join('')
                 }
-            };
-            reader.readAsText(file);
-            
-            event.target.value = '';
+            `;
         }
 
+        function addStaff() {
+            const name = document.getElementById('new-name').value.trim();
+            const position = document.getElementById('new-position').value;
+            const pin = document.getElementById('new-pin').value.trim();
+            
+            if (!name || !pin) return msg('staff-msg', 'Fill all fields', 'err');
+            if (!/^\d{4}$/.test(pin)) return msg('staff-msg', 'PIN must be 4 digits', 'err');
+            
+            app.staff.push({ 
+                id: 'staff-' + Date.now(), 
+                name, 
+                position, 
+                pin 
+            });
+            
+            saveData();
+            document.getElementById('new-name').value = '';
+            document.getElementById('new-pin').value = '';
+            msg('staff-msg', `✅ ${name} added successfully!`, 'ok');
+            
+            setTimeout(render, 1500);
+        }
+
+        function delStaff(id) {
+            const staff = app.staff.find(s => s.id === id);
+            if (!staff) return;
+            
+            const hasRecords = app.records.some(r => r.sid === id);
+            const hasDeductions = app.deductions.some(d => d.staffId === id);
+            
+            let confirmMsg = `Delete ${staff.name}?`;
+            if (hasRecords) confirmMsg += '\n\n⚠️ This will also delete all their attendance records.';
+            if (hasDeductions) confirmMsg += '\n\n⚠️ This will also delete all their deduction records.';
+            confirmMsg += '\n\nThis action cannot be undone!';
+            
+            if (!confirm(confirmMsg)) return;
+            
+            app.staff = app.staff.filter(s => s.id !== id);
+            app.records = app.records.filter(r => r.sid !== id);
+            app.deductions = app.deductions.filter(d => d.staffId !== id);
+            
+            saveData();
+            render();
+        }
+
+        // Export View
         function renderExport() {
             return `
                 <h2>📊 Export Data</h2>
-                
-                <div style="background: #e3f2fd; padding: 15px; border-radius: 4px; margin-bottom: 20px;">
-                    <strong>ℹ️ Export Options</strong><br>
-                    Download attendance records and payroll data in various formats.
-                </div>
-                
-                <div class="form-grid">
-                    <div class="form-group">
-                        <label>Start Date</label>
-                        <input type="date" id="exp-start" value="${app.start || ''}">
-                    </div>
-                    <div class="form-group">
-                        <label>End Date</label>
-                        <input type="date" id="exp-end" value="${app.end || ''}">
-                    </div>
-                </div>
-                
-                <div style="margin: 20px 0;">
-                    <button class="btn-primary" onclick="setExportDates()">📅 Set Date Range</button>
-                </div>
-                
-                <div id="exp-msg" class="msg" style="display:none;"></div>
-                
-                <h3 style="margin-top: 30px; margin-bottom: 15px;">Available Exports</h3>
-                
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px;">
+                <div style="display: grid; gap: 20px;">
                     <div style="background: #f9f9f9; padding: 20px; border-radius: 6px;">
-                        <h4 style="margin-bottom: 10px;">📋 DTR Records</h4>
-                        <p style="color: #666; font-size: 14px; margin-bottom: 15px;">Daily Time Record with all clock in/out times</p>
-                        <button class="btn-primary" onclick="expCSV()" style="width: 100%;">Download CSV</button>
+                        <h3 style="margin-bottom: 10px;">📋 Export DTR Records (CSV)</h3>
+                        <p style="color: #666; margin-bottom: 15px;">Download all attendance records in CSV format</p>
+                        <button class="btn-primary" onclick="expCSV()">⬇️ Download DTR CSV</button>
                     </div>
                     
                     <div style="background: #f9f9f9; padding: 20px; border-radius: 6px;">
-                        <h4 style="margin-bottom: 10px;">📊 Detailed Report</h4>
-                        <p style="color: #666; font-size: 14px; margin-bottom: 15px;">Complete report with hours and status</p>
-                        <button class="btn-warning" onclick="expXL()" style="width: 100%;">Download CSV</button>
+                        <h3 style="margin-bottom: 10px;">💰 Export Payroll Report (CSV)</h3>
+                        <p style="color: #666; margin-bottom: 15px;">Download payroll calculations for selected period</p>
+                        <div class="form-grid" style="margin-bottom: 15px;">
+                            <div class="form-group">
+                                <label>Start Date</label>
+                                <input type="date" id="exp-start" value="${app.start}" onchange="app.start=this.value">
+                            </div>
+                            <div class="form-group">
+                                <label>End Date</label>
+                                <input type="date" id="exp-end" value="${app.end}" onchange="app.end=this.value">
+                            </div>
+                        </div>
+                        <button class="btn-primary" onclick="expPay()">⬇️ Download Payroll CSV</button>
                     </div>
                     
                     <div style="background: #f9f9f9; padding: 20px; border-radius: 6px;">
-                        <h4 style="margin-bottom: 10px;">💰 Payroll Summary</h4>
-                        <p style="color: #666; font-size: 14px; margin-bottom: 15px;">Calculated pay for selected period</p>
-                        <button class="btn-primary" onclick="expPay()" style="width: 100%;">Download CSV</button>
+                        <h3 style="margin-bottom: 10px;">📊 Export Hours Report (Excel)</h3>
+                        <p style="color: #666; margin-bottom: 15px;">Download detailed hours report with calculations</p>
+                        <button class="btn-primary" onclick="expXL()">⬇️ Download Excel Report</button>
                     </div>
                 </div>
+                <div id="exp-msg" class="msg" style="display: none; margin-top: 20px;"></div>
             `;
         }
 
-        function setExportDates() {
-            const start = document.getElementById('exp-start').value;
-            const end = document.getElementById('exp-end').value;
-            
-            if (!start || !end) {
-                msg('exp-msg', '❌ Select both dates', 'err');
-                return;
-            }
-            
-            if (new Date(start) > new Date(end)) {
-                msg('exp-msg', '❌ Start date must be before end date', 'err');
-                return;
-            }
-            
-            app.start = start;
-            app.end = end;
-            
-            msg('exp-msg', `✅ Date range set: ${start} to ${end}`, 'ok');
-        }
-
-
-        // ============================================
-        // TELEGRAM NOTIFICATION SYSTEM
-        // ============================================
-
-        function renderTelegram() {
-            const telegramConfig = JSON.parse(localStorage.getItem('telegramConfig')) || { 
-                enabled: false, 
-                botToken: '', 
-                chatId: '' 
-            };
-            
+        // Devices View
+        function renderDevices() {
             return `
-                <h2>📨 Telegram Notifications</h2>
+                <h2>🔐 Device Management</h2>
+                <div class="status">
+                    <strong>Current Device ID:</strong> ${deviceId}<br>
+                    <strong>Status:</strong> ${authorizedDevices.some(d => d.id === deviceId) ? '✅ Authorized' : '❌ Not Authorized'}
+                </div>
                 
                 <div style="background: #e3f2fd; padding: 15px; border-radius: 4px; margin-bottom: 20px; border-left: 4px solid #2196F3;">
-                    <strong>ℹ️ About Telegram Notifications</strong><br>
-                    <small>Receive instant notifications when staff clock in or clock out.</small>
+                    <strong>ℹ️ About Device Authorization:</strong><br>
+                    <small>Only authorized devices can access this system. Add this device below if it's not authorized yet.</small>
                 </div>
-                
-                <h3 style="margin-bottom: 15px;">Configuration</h3>
-                
-                <div class="form-group" style="margin-bottom: 20px;">
-                    <label style="display: flex; align-items: center; cursor: pointer;">
-                        <input type="checkbox" id="telegram-enabled" ${telegramConfig.enabled ? 'checked' : ''} 
-                            style="margin-right: 10px; width: auto; cursor: pointer;">
-                        <span>Enable Telegram Notifications</span>
-                    </label>
-                </div>
-                
-                <div class="form-grid" style="margin-bottom: 20px;">
-                    <div class="form-group">
-                        <label>Bot Token</label>
-                        <input type="text" id="telegram-token" value="${telegramConfig.botToken || ''}" 
-                            placeholder="1234567890:ABCdefGHIjklMNOpqrsTUVwxyz">
-                        <small style="color: #666; font-size: 12px; margin-top: 5px;">Get this from @BotFather on Telegram</small>
-                    </div>
-                    <div class="form-group">
-                        <label>Chat ID</label>
-                        <input type="text" id="telegram-chatid" value="${telegramConfig.chatId || ''}" 
-                            placeholder="-1001234567890">
-                        <small style="color: #666; font-size: 12px; margin-top: 5px;">Your group or channel chat ID</small>
-                    </div>
-                </div>
-                
-                <div class="action-buttons" style="margin-bottom: 20px;">
-                    <button class="btn-primary" onclick="saveTelegramConfig()">💾 Save Configuration</button>
-                    <button class="btn-warning" onclick="testTelegramNotification()">🧪 Send Test Message</button>
-                </div>
-                
-                <div id="telegram-msg"></div>
-                
-                <div style="background: #fff3cd; padding: 15px; border-radius: 6px; margin-top: 20px; margin-bottom: 20px; border-left: 4px solid #FF9800;">
-                    <strong>📋 Notification Format</strong><br>
-                    <div style="margin-top: 10px; font-family: monospace; font-size: 13px; background: white; padding: 10px; border-radius: 4px; white-space: pre;">Clock In/Clock Out
-Staff Name: [Name]
-Date: [Date]
-Time: [Time]
-Device Nickname: [Device]</div>
-                </div>
-                
-                <div style="background: #f9f9f9; padding: 20px; border-radius: 6px;">
-                    <h4 style="margin-bottom: 15px;">📖 Setup Instructions</h4>
-                    
-                    <ol style="margin-left: 20px; line-height: 1.8; color: #555;">
-                        <li><strong>Create a Bot:</strong>
-                            <ul style="margin-left: 20px; margin-top: 5px;">
-                                <li>Open Telegram and search for <strong>@BotFather</strong></li>
-                                <li>Send <code>/newbot</code> command</li>
-                                <li>Follow instructions to create your bot</li>
-                                <li>Copy the <strong>Bot Token</strong> provided</li>
-                            </ul>
-                        </li>
-                        <li style="margin-top: 10px;"><strong>Create a Group/Channel:</strong>
-                            <ul style="margin-left: 20px; margin-top: 5px;">
-                                <li>Create a group or channel for notifications</li>
-                                <li>Add your bot to the group/channel</li>
-                                <li>Make the bot an admin (for channels)</li>
-                            </ul>
-                        </li>
-                        <li style="margin-top: 10px;"><strong>Get Chat ID:</strong>
-                            <ul style="margin-left: 20px; margin-top: 5px;">
-                                <li>Add <strong>@userinfobot</strong> to your group</li>
-                                <li>It will display the Chat ID</li>
-                                <li>Copy the Chat ID (including the minus sign if present)</li>
-                                <li>Remove @userinfobot from the group</li>
-                            </ul>
-                        </li>
-                        <li style="margin-top: 10px;"><strong>Configure:</strong>
-                            <ul style="margin-left: 20px; margin-top: 5px;">
-                                <li>Paste Bot Token and Chat ID above</li>
-                                <li>Enable notifications</li>
-                                <li>Click "Save Configuration"</li>
-                                <li>Click "Send Test Message" to verify</li>
-                            </ul>
-                        </li>
-                    </ol>
-                </div>
-            `;
-        }
 
-        function saveTelegramConfig() {
-            const config = {
-                enabled: document.getElementById('telegram-enabled').checked,
-                botToken: document.getElementById('telegram-token').value.trim(),
-                chatId: document.getElementById('telegram-chatid').value.trim()
-            };
-            
-            if (config.enabled && (!config.botToken || !config.chatId)) {
-                msg('telegram-msg', '❌ Bot Token and Chat ID are required when enabled', 'err');
-                return;
-            }
-            
-            localStorage.setItem('telegramConfig', JSON.stringify(config));
-            msg('telegram-msg', '✅ Configuration saved successfully!', 'ok');
-        }
-
-        function testTelegramNotification() {
-            const config = JSON.parse(localStorage.getItem('telegramConfig')) || {};
-            
-            if (!config.botToken || !config.chatId) {
-                msg('telegram-msg', '❌ Please configure Bot Token and Chat ID first', 'err');
-                return;
-            }
-            
-            const testMessage = `🧪 Test Notification
-
-This is a test message from Sir Ramos Drugstore.
-
-If you received this, your Telegram integration is working correctly! ✅`;
-            
-            sendTelegramMessage(config.botToken, config.chatId, testMessage)
-                .then(() => {
-                    msg('telegram-msg', '✅ Test message sent! Check your Telegram.', 'ok');
-                })
-                .catch(err => {
-                    msg('telegram-msg', '❌ Failed to send: ' + err.message, 'err');
-                });
-        }
-
-        async function sendTelegramMessage(botToken, chatId, message) {
-            const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
-            
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    chat_id: chatId,
-                    text: message
-                })
-            });
-            
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.description || 'Failed to send message');
-            }
-            
-            return response.json();
-        }
-
-        async function sendClockNotification(staffName, action, date, time) {
-            const config = JSON.parse(localStorage.getItem('telegramConfig')) || {};
-            
-            // Only send if enabled
-            if (!config.enabled || !config.botToken || !config.chatId) {
-                return;
-            }
-            
-            // Get device nickname
-            const currentDevice = getDeviceId();
-            const deviceInfo = JSON.parse(localStorage.getItem('deviceInfo_' + currentDevice) || '{}');
-            const deviceNickname = deviceInfo.nickname || 'Unnamed Device';
-            
-            // Format message exactly as specified
-            const message = `${action}
-Staff Name: ${staffName}
-Date: ${date}
-Time: ${time}
-Device Nickname: ${deviceNickname}`;
-            
-            try {
-                await sendTelegramMessage(config.botToken, config.chatId, message);
-                console.log('✅ Telegram notification sent');
-            } catch (err) {
-                console.error('❌ Telegram notification failed:', err);
-            }
-        }
-
-        function renderSettings() {
-            return `
-                <h2>⚙️ Settings</h2>
-                
-                <div style="background: #e3f2fd; padding: 15px; border-radius: 4px; margin-bottom: 20px;">
-                    <strong>ℹ️ System Settings</strong><br>
-                    Configure system preferences and manage data.
-                </div>
-                
-                <h3 style="margin-bottom: 15px;">Admin Settings</h3>
-                
-                <div style="background: #f9f9f9; padding: 20px; border-radius: 6px; margin-bottom: 20px;">
-                    <label style="display: flex; align-items: center; cursor: pointer;">
-                        <input type="checkbox" ${hideAdminTabs ? 'checked' : ''} onchange="toggleAdminTabs(this.checked)" style="margin-right: 10px;">
-                        <span>Hide admin tabs when not logged in</span>
-                    </label>
-                    <p style="color: #666; font-size: 12px; margin-top: 5px;">When enabled, admin-only tabs will be hidden unless you're logged in as admin.</p>
-                </div>
-                
-                ${!isFirebaseConfigured ? `
-                <h3 style="margin-bottom: 15px;">Data Storage</h3>
-                <div style="background: #fff3cd; padding: 15px; border-radius: 4px; margin-bottom: 20px; border-left: 4px solid #FF9800;">
-                    <strong>⚠️ Using Local Storage Mode</strong><br>
-                    Data is stored locally on this device. To enable cloud sync:<br>
-                    <ol style="margin: 10px 0 10px 20px; color: #666;">
-                        <li>Create a Firebase project at <a href="https://console.firebase.google.com" target="_blank" style="color: #FF9800;">Firebase Console</a></li>
-                        <li>Enable Realtime Database</li>
-                        <li>Update the Firebase configuration in the HTML file</li>
-                    </ol>
-                </div>
-                ` : `
-                <h3 style="margin-bottom: 15px;">Firebase Connection</h3>
-                <div style="background: #e8f5e9; padding: 15px; border-radius: 4px; margin-bottom: 20px; border-left: 4px solid #4CAF50;">
-                    <strong>✅ Firebase Connected</strong><br>
-                    Your data is synced to the cloud.
-                </div>
                 <div style="margin-bottom: 20px;">
-                    <button class="btn-primary" onclick="testFirebaseConnection()">🔍 Test Connection</button>
-                    <button class="btn-warning" onclick="viewFirebaseData()">📊 View Data in Console</button>
+                    <button class="btn-primary" onclick="authDevice()">✅ Authorize This Device</button>
+                    <button class="btn-warning" onclick="loadAuthorizedDevices(); render()">🔄 Refresh List</button>
                 </div>
-                <div id="firebase-test-msg" class="msg" style="display:none;"></div>
-                `}
-                
-                <h3 style="margin-top: 30px; margin-bottom: 15px;">⚠️ Danger Zone</h3>
-                
-                <div style="background: #ffebee; padding: 20px; border-radius: 6px; border-left: 4px solid #f44336;">
-                    <h4 style="color: #f44336; margin-bottom: 10px;">Clear All Data</h4>
-                    <p style="color: #666; font-size: 14px; margin-bottom: 15px;">This will permanently delete all staff and attendance records. This action cannot be undone.</p>
-                    <button class="btn-danger" onclick="clearAllData()">🗑️ Clear All Data</button>
-                </div>
+
+                <h3 style="margin-bottom: 15px;">Authorized Devices (${authorizedDevices.length})</h3>
+                ${authorizedDevices.length === 0 ? '<p style="color: #666;">No devices authorized yet.</p>' : 
+                    authorizedDevices.map(d => {
+                        const isCurrent = d.id === deviceId;
+                        const lastActive = d.lastActive ? new Date(d.lastActive).toLocaleString() : 'Never';
+                        return `
+                            <div class="item ${isCurrent ? 'deduction-item' : ''}">
+                                <div>
+                                    <strong>${d.name || 'Unnamed Device'}</strong>
+                                    ${isCurrent ? '<span class="admin-badge">Current</span>' : ''}<br>
+                                    <small style="color: #666;">
+                                        ID: ${d.id}<br>
+                                        Last Active: ${lastActive}
+                                    </small>
+                                </div>
+                                ${!isCurrent ? `
+                                    <button class="btn-danger" onclick="removeDevice('${d.id}')">Remove</button>
+                                ` : ''}
+                            </div>
+                        `;
+                    }).join('')
+                }
             `;
         }
 
-        function toggleAdminTabs(hide) {
-            hideAdminTabs = hide;
-            localStorage.setItem('hideAdminTabs', hide.toString());
+        function authDevice() {
+            const name = prompt('Enter a name for this device (e.g., Office Computer, Manager Phone):');
+            if (!name) return;
+            
+            const existing = authorizedDevices.find(d => d.id === deviceId);
+            if (existing) {
+                existing.name = name;
+                existing.lastActive = new Date().toISOString();
+            } else {
+                authorizedDevices.push({
+                    id: deviceId,
+                    name: name,
+                    addedDate: new Date().toISOString(),
+                    lastActive: new Date().toISOString()
+                });
+            }
+            
+            saveAuthorizedDevices();
             render();
         }
 
-        function testFirebaseConnection() {
+        function removeDevice(id) {
+            if (!confirm('Remove this device? It will need to be re-authorized to access the system.')) return;
+            authorizedDevices = authorizedDevices.filter(d => d.id !== id);
+            saveAuthorizedDevices();
+            render();
+        }
+
+        // Settings View
+        function renderSettings() {
+            // Ensure telegram settings exist
+            if (!app.settings.telegram) {
+                app.settings.telegram = {
+                    enabled: false,
+                    botToken: '',
+                    chatId: '',
+                    notifications: {
+                        clockIn: true,
+                        clockOut: true,
+                        newDeduction: true,
+                        payrollGenerated: false
+                    }
+                };
+                saveData();
+            }
+            const telegram = app.settings.telegram;
+            const deviceName = localStorage.getItem('deviceName') || '';
+            return `
+                <h2>⚙️ Settings</h2>
+                
+                <div style="background: white; padding: 25px; border-radius: 8px; border: 1px solid #e0e0e0; margin-bottom: 25px;">
+                    <h3 style="margin-bottom: 15px; color: #2196F3;">📱 Device Settings</h3>
+                    
+                    <div class="info-box">
+                        <strong>💡 Device Name:</strong>
+                        <small>
+                            This name will appear in Telegram notifications to identify which device was used for clock in/out.
+                        </small>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 15px;">
+                        <label>Device Name</label>
+                        <input type="text" id="device-name" placeholder="e.g., Front Desk, Pharmacy Counter" value="${deviceName}">
+                    </div>
+
+                    <button class="btn-primary" onclick="saveDeviceName()">💾 Save Device Name</button>
+                    <div id="device-msg" class="msg" style="display: none; margin-top: 15px;"></div>
+                </div>
+                
+                <div style="background: white; padding: 25px; border-radius: 8px; border: 1px solid #e0e0e0; margin-bottom: 25px;">
+                    <h3 style="margin-bottom: 15px; color: #2196F3;">📱 Telegram Notifications (Global)</h3>
+                    
+                    <div class="info-box">
+                        <strong>💡 How to set up Telegram notifications:</strong>
+                        <small>
+                            1. Create a bot using <a href="https://t.me/BotFather" target="_blank">@BotFather</a> on Telegram<br>
+                            2. Copy your Bot Token<br>
+                            3. Start a chat with your bot and send any message<br>
+                            4. Get your Chat ID from <a href="https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getUpdates" target="_blank">getUpdates</a> (replace YOUR_BOT_TOKEN)<br>
+                            5. Enter both values below and enable notifications<br>
+                            <br>
+                            <strong>⚡ These settings are global and will work on all devices!</strong>
+                        </small>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 15px;">
+                        <label style="display: flex; align-items: center; gap: 10px;">
+                            <input type="checkbox" id="telegram-enabled" ${telegram.enabled ? 'checked' : ''} 
+                                   onchange="toggleTelegramNotifications(this.checked)" style="width: auto;">
+                            <span>Enable Telegram Notifications</span>
+                        </label>
+                    </div>
+
+                    <div id="telegram-config" style="${telegram.enabled ? '' : 'opacity: 0.5; pointer-events: none;'}">
+                        <div class="form-grid" style="margin-bottom: 20px;">
+                            <div class="form-group">
+                                <label>Bot Token</label>
+                                <input type="text" id="telegram-token" 
+                                       placeholder="123456789:ABCdefGHIjklMNOpqrsTUVwxyz" 
+                                       value="${telegram.botToken}">
+                                <small style="color: #666; margin-top: 5px; display: block;">
+                                    Get from @BotFather on Telegram
+                                </small>
+                            </div>
+                            <div class="form-group">
+                                <label>Chat ID</label>
+                                <input type="text" id="telegram-chatid" 
+                                       placeholder="123456789" 
+                                       value="${telegram.chatId}">
+                                <small style="color: #666; margin-top: 5px; display: block;">
+                                    Your Telegram Chat ID
+                                </small>
+                            </div>
+                        </div>
+
+                        <h4 style="margin-bottom: 10px; color: #555;">Notification Types:</h4>
+                        <div style="display: grid; gap: 10px; margin-bottom: 20px;">
+                            <label style="display: flex; align-items: center; gap: 10px; padding: 10px; background: #f9f9f9; border-radius: 4px;">
+                                <input type="checkbox" id="notif-clockin" ${telegram.notifications.clockIn ? 'checked' : ''} style="width: auto;">
+                                <span>🟢 Clock In notifications</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 10px; padding: 10px; background: #f9f9f9; border-radius: 4px;">
+                                <input type="checkbox" id="notif-clockout" ${telegram.notifications.clockOut ? 'checked' : ''} style="width: auto;">
+                                <span>🔴 Clock Out notifications</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 10px; padding: 10px; background: #f9f9f9; border-radius: 4px;">
+                                <input type="checkbox" id="notif-deduction" ${telegram.notifications.newDeduction ? 'checked' : ''} style="width: auto;">
+                                <span>💸 New Deduction notifications</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 10px; padding: 10px; background: #f9f9f9; border-radius: 4px;">
+                                <input type="checkbox" id="notif-payroll" ${telegram.notifications.payrollGenerated ? 'checked' : ''} style="width: auto;">
+                                <span>💰 Payroll Generated notifications</span>
+                            </label>
+                        </div>
+
+                        <div style="display: flex; gap: 10px;">
+                            <button class="btn-primary" onclick="saveTelegramSettings()">💾 Save Settings</button>
+                            <button class="btn-info" onclick="testTelegramNotification()">📤 Send Test Message</button>
+                        </div>
+                        <div id="telegram-msg" class="msg" style="display: none; margin-top: 15px;"></div>
+                    </div>
+                </div>
+
+                <div style="background: white; padding: 25px; border-radius: 8px; border: 1px solid #e0e0e0;">
+                    <h3 style="margin-bottom: 15px; color: #2196F3;">🔔 Recent Notifications</h3>
+                    <p style="color: #666;">Notification history will appear here once configured.</p>
+                </div>
+            `;
+        }
+
+        function saveDeviceName() {
+            const deviceName = document.getElementById('device-name').value.trim();
+            if (!deviceName) {
+                return msg('device-msg', '❌ Please enter a device name', 'err');
+            }
+            localStorage.setItem('deviceName', deviceName);
+            msg('device-msg', '✅ Device name saved', 'ok');
+        }
+
+        function toggleTelegramNotifications(enabled) {
+            const configDiv = document.getElementById('telegram-config');
+            if (enabled) {
+                configDiv.style.opacity = '1';
+                configDiv.style.pointerEvents = 'auto';
+            } else {
+                configDiv.style.opacity = '0.5';
+                configDiv.style.pointerEvents = 'none';
+            }
+        }
+
+        function saveTelegramSettings() {
+            const enabled = document.getElementById('telegram-enabled').checked;
+            const botToken = document.getElementById('telegram-token').value.trim();
+            const chatId = document.getElementById('telegram-chatid').value.trim();
+            
+            if (enabled && (!botToken || !chatId)) {
+                return msg('telegram-msg', '❌ Please enter both Bot Token and Chat ID', 'err');
+            }
+
+            app.settings.telegram = {
+                enabled: enabled,
+                botToken: botToken,
+                chatId: chatId,
+                notifications: {
+                    clockIn: document.getElementById('notif-clockin').checked,
+                    clockOut: document.getElementById('notif-clockout').checked,
+                    newDeduction: document.getElementById('notif-deduction').checked,
+                    payrollGenerated: document.getElementById('notif-payroll').checked
+                }
+            };
+
+            saveData();
+            msg('telegram-msg', '✅ Telegram settings saved successfully!', 'ok');
+        }
+
+        async function sendTelegramNotification(message) {
+            if (!app.settings.telegram.enabled) return;
+            
+            const { botToken, chatId } = app.settings.telegram;
+            if (!botToken || !chatId) return;
+
+            try {
+                const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        chat_id: chatId,
+                        text: message,
+                        parse_mode: 'HTML'
+                    })
+                });
+
+                const data = await response.json();
+                if (!data.ok) {
+                    console.error('Telegram notification failed:', data);
+                }
+            } catch (error) {
+                console.error('Error sending Telegram notification:', error);
+            }
+        }
+
+        async function testTelegramNotification() {
+            const botToken = document.getElementById('telegram-token').value.trim();
+            const chatId = document.getElementById('telegram-chatid').value.trim();
+
+            if (!botToken || !chatId) {
+                return msg('telegram-msg', '❌ Please enter both Bot Token and Chat ID first', 'err');
+            }
+
+            msg('telegram-msg', '📤 Sending test message...', 'ok');
+
+            try {
+                const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        chat_id: chatId,
+                        text: '🧪 <b>Test Notification</b>\\n\\nThis is a test message from Sir Ramos Drugstore System.\\n\\n✅ Your Telegram notifications are working correctly!',
+                        parse_mode: 'HTML'
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (data.ok) {
+                    msg('telegram-msg', '✅ Test message sent successfully! Check your Telegram.', 'ok');
+                } else {
+                    msg('telegram-msg', `❌ Failed to send: ${data.description}`, 'err');
+                }
+            } catch (error) {
+                msg('telegram-msg', `❌ Error: ${error.message}`, 'err');
+            }
+        }
+
+        // Firebase Management View
+        function renderFirebase() {
+            const status = isFirebaseInitialized ? '✅ Connected' : '❌ Not Connected';
+            const statusColor = isFirebaseInitialized ? '#4CAF50' : '#f44336';
+
+            return `
+                <h2>🔥 Firebase Management</h2>
+                
+                <div class="status" style="border-left-color: ${statusColor}; background: ${isFirebaseInitialized ? '#e8f5e9' : '#ffebee'};">
+                    <strong>Firebase Status:</strong> ${status}<br>
+                    <strong>Mode:</strong> ${isFirebaseInitialized ? 'Cloud Storage' : 'Local Storage Only'}<br>
+                    ${isFirebaseInitialized ? `<strong>Project:</strong> ${firebaseConfig.projectId}` : ''}
+                </div>
+
+                ${!isFirebaseInitialized ? `
+                    <div class="firebase-notice">
+                        <strong>⚠️ Firebase Not Configured</strong><br>
+                        <p style="margin: 10px 0;">Your system is currently using localStorage only. Data is stored on this device and won't sync across devices.</p>
+                        <p style="margin: 10px 0;">To enable cloud sync:</p>
+                        <ol style="margin-left: 20px;">
+                            <li>Create a Firebase project at <a href="https://console.firebase.google.com" target="_blank">Firebase Console</a></li>
+                            <li>Get your config values from Project Settings</li>
+                            <li>Update the firebaseConfig in the HTML file</li>
+                            <li>Set up database rules to allow read/write</li>
+                        </ol>
+                    </div>
+                ` : ''}
+
+                <div style="display: grid; gap: 15px; margin-top: 20px;">
+                    ${isFirebaseInitialized ? `
+                        <div style="background: #f9f9f9; padding: 20px; border-radius: 6px;">
+                            <h3 style="margin-bottom: 10px;">🧪 Test Connection</h3>
+                            <p style="color: #666; margin-bottom: 15px;">Test if Firebase is working correctly</p>
+                            <button class="btn-primary" onclick="testFirebase()">Run Test</button>
+                            <div id="firebase-test-msg" class="msg" style="display: none; margin-top: 10px;"></div>
+                        </div>
+
+                        <div style="background: #f9f9f9; padding: 20px; border-radius: 6px;">
+                            <h3 style="margin-bottom: 10px;">👁️ View Data in Console</h3>
+                            <p style="color: #666; margin-bottom: 15px;">Open Firebase Console to see your data</p>
+                            <button class="btn-primary" onclick="viewFirebaseData()">Open Console</button>
+                        </div>
+                    ` : ''}
+
+                    <div style="background: #fff3cd; padding: 20px; border-radius: 6px; border: 2px solid #FF9800;">
+                        <h3 style="margin-bottom: 10px; color: #f44336;">🗑️ Danger Zone</h3>
+                        <p style="color: #666; margin-bottom: 15px;">Permanently delete all data from ${isFirebaseInitialized ? 'Firebase and ' : ''}localStorage</p>
+                        <button class="btn-danger" onclick="clearAllData()">⚠️ Delete All Data</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function testFirebase() {
             if (!isFirebaseInitialized) {
-                msg('firebase-test-msg', 'Firebase not initialized', 'err');
+                msg('firebase-test-msg', '❌ Firebase not initialized', 'err');
                 return;
             }
 
-            const testData = { test: true, timestamp: Date.now() };
-            
-            db.ref('_test').set(testData)
+            msg('firebase-test-msg', '🔄 Testing connection...', 'ok');
+
+            db.ref('_test').set({ test: true, timestamp: Date.now() })
                 .then(() => {
                     return db.ref('_test').once('value');
                 })
@@ -2184,7 +2125,7 @@ Device Nickname: ${deviceNickname}`;
         }
 
         function clearAllData() {
-            if (!confirm('⚠️ DELETE ALL DATA?\n\nThis will permanently delete:\n- All staff members\n- All attendance records\n\nThis action CANNOT be undone!')) {
+            if (!confirm('⚠️ DELETE ALL DATA?\n\nThis will permanently delete:\n- All staff members\n- All attendance records\n- All deduction records\n\nThis action CANNOT be undone!')) {
                 return;
             }
             
@@ -2200,12 +2141,14 @@ Device Nickname: ${deviceNickname}`;
             
             app.staff = [];
             app.records = [];
+            app.deductions = [];
             
             if (isFirebaseInitialized) {
-                db.ref().set({ staff: [], records: [] })
+                db.ref().set({ staff: [], records: [], deductions: [], settings: app.settings })
                     .then(() => {
                         localStorage.removeItem('staff');
                         localStorage.removeItem('records');
+                        localStorage.removeItem('deductions');
                         alert('✅ All data has been cleared from Firebase and localStorage.');
                         nav('clock');
                     })
@@ -2213,12 +2156,14 @@ Device Nickname: ${deviceNickname}`;
                         console.error('Error clearing Firebase:', err);
                         localStorage.removeItem('staff');
                         localStorage.removeItem('records');
+                        localStorage.removeItem('deductions');
                         alert('✅ All data has been cleared from localStorage.');
                         nav('clock');
                     });
             } else {
                 localStorage.removeItem('staff');
                 localStorage.removeItem('records');
+                localStorage.removeItem('deductions');
                 alert('✅ All data has been cleared.');
                 nav('clock');
             }
@@ -2252,22 +2197,39 @@ Device Nickname: ${deviceNickname}`;
 
         function expPay() {
             if (!app.start || !app.end) return msg('exp-msg', 'Set dates', 'err');
-            const rows = [['Staff','Days','Net']];
+            const rows = [['Staff','Days','OT Hours','Regular Pay','OT Pay','Gross','Deductions','Net']];
             app.staff.forEach(s => {
                 const recs = app.records.filter(r => {
                     const rd = new Date(r.date);
                     return r.sid === s.id && rd >= new Date(app.start) && rd <= new Date(app.end);
                 });
                 let wd=0;
+                let otHours=0;
                 recs.forEach(r => {
                     if (!r.status) {
                         const h = calcH(r.in, r.out);
                         if (h >= 9.5) wd++;
+                        otHours += calcOT(r.out);
                     }
                 });
                 const rt = RATES[s.position];
-                const gross = wd * rt.daily;
-                rows.push([s.name, wd, gross.toFixed(2)]);
+                const regularPay = roundUp(wd * rt.daily);
+                const otPay = roundUp(otHours * rt.ot);
+                const gross = regularPay + otPay;
+                
+                // Calculate deductions for this period
+                const deductionsInPeriod = app.deductions.filter(d => {
+                    const deductDate = new Date(d.deductionDate);
+                    return d.staffId === s.id && 
+                           deductDate >= new Date(app.start) && 
+                           deductDate <= new Date(app.end) &&
+                           d.status === 'pending';
+                });
+                
+                const totalDeductions = roundUp(deductionsInPeriod.reduce((sum, d) => sum + d.amount, 0));
+                const net = gross - totalDeductions;
+                
+                rows.push([s.name, wd, otHours, regularPay, otPay, gross, totalDeductions, net]);
             });
             dl('\uFEFF' + rows.map(r => r.join(',')).join('\n'), 'Payslip.csv', 'text/csv;charset=utf-8');
             msg('exp-msg', 'Downloaded!', 'ok');
@@ -2309,6 +2271,7 @@ Device Nickname: ${deviceNickname}`;
 
         // Initialize app
         loadData();
+        loadAuthorizedDevices();
         render();
         updateAdminStatus();
         updateDeviceActivity();
