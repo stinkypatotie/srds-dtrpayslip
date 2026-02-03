@@ -128,6 +128,7 @@
             console.log('📝 Using localStorage as fallback');
         }
 
+
         // Check if Firebase config is set up
         const isFirebaseConfigured = !firebaseConfig.apiKey.includes('YOUR_');
 
@@ -438,9 +439,9 @@
         }
 
         const RATES = {
-            regular: { hourly: 68, daily: 650 },
-            senior: { hourly: 73, daily: 700 },
-            trainee: { hourly: 53, daily: 500 }
+            regular: { daily: 650, ot: 68 },
+            trainee: { daily: 500, ot: 52 },
+            senior: { daily: 700, ot: 73 }
         };
 
         const app = {
@@ -1319,14 +1320,25 @@
             // Get records for this staff in the pay period
             const records = app.records.filter(r => {
                 const recordDate = new Date(r.date);
-                return r.staffId === staffId && 
+                return r.sid === staffId && 
                        recordDate >= new Date(app.start) && 
                        recordDate <= new Date(app.end);
             });
+            console.log("=== PAYROLL DEBUG ===");
+            console.log("Staff:", staff.name);
+            console.log("Pay period:", app.start, "to", app.end);
+            console.log("Total records found:", records.length);
+            console.log("Records:", records);
+
+
+
+
 
             // Calculate payroll
-            let workDays = 0;
+            let fullDays = 0;
+            let partialHours = 0;
             let totalHours = 0;
+            let overtimeDays = 0;
             let totalLateMinutes = 0;
             let restDays = 0;
             let absences = 0;
@@ -1339,22 +1351,51 @@
                     absences++;
                 } else if (r.status === 'leave') {
                     leaves++;
-                } else if (r.timeIn && r.timeOut) {
-                    const hours = calculateHours(r.timeIn, r.timeOut);
-                    if (hours >= 9.5) {
-                        workDays++;
-                    }
+                } else if (r.in && r.out) {
+                    const hours = calculateHours(r.in, r.out);
                     totalHours += hours;
-                    totalLateMinutes += calculateLateMinutes(r.timeIn);
+                    
+                    if (hours >= 9.5) {
+                        // Full day
+                        fullDays++;
+                    } else {
+                        // Partial day - count hours
+                        partialHours += hours;
+                    }
+                    
+                    totalLateMinutes += calculateLateMinutes(r.in);
+                    
+                    // Check if clocked out at 8 PM or later (automatic 1 hour OT)
+                    const [outHour, outMin] = r.out.split(':').map(Number);
+                    const outTimeIn24 = outHour * 60 + outMin; // Convert to minutes
+                    const eightPM = 20 * 60; // 8:00 PM = 20:00 = 1200 minutes
+                    
+                    if (outTimeIn24 >= eightPM) {
+                        overtimeDays++; // Count each day clocked out at/after 8 PM
+                    }
                 }
             });
+            
+            console.log("Full days:", fullDays);
+            console.log("Undertime:", partialHours);
+            console.log("Overtime:", overtimeDays);
+            console.log("Total hours:", totalHours);
+            console.log("==================");
 
             const rate = RATES[staff.position];
-            const grossPay = workDays * rate.daily;
-            const latePenalty = (totalLateMinutes / 60) * (rate.daily / 9.5);
+            
+            // Calculate hourly rate from daily rate (daily rate ÷ 12 hours)
+            const hourlyRate = rate.daily / 12;
+            
+            // Calculate gross pay: (full days × daily rate) + (partial hours × hourly rate) + overtime
+            const fullDaysPay = fullDays * rate.daily;
+            const partialHoursPay = partialHours * hourlyRate;
+            const overtimePay = overtimeDays * rate.ot;
+            const grossPay = fullDaysPay + partialHoursPay + overtimePay;
+            
+            // Calculate late penalty using hourly rate
+            const latePenalty = (totalLateMinutes / 60) * hourlyRate;
             const netPay = grossPay - latePenalty;
-
-            // Render payslip
             document.getElementById('view').innerHTML = `
                 <div class="no-print">
                     <button onclick="render()" style="margin-bottom: 20px; background: #9C27B0; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer;">← Back to Payroll</button>
@@ -1379,19 +1420,49 @@
                         </div>
                     ` : ''}
                     
+                    
+                    
+                    
                     <h3 style="border-bottom: 2px solid #333; padding-bottom: 5px; margin-bottom: 15px;">Earnings</h3>
-                    <div style="display: flex; justify-content: space-between; padding: 12px; border-bottom: 1px solid #ddd;">
-                        <span>Days Worked</span>
-                        <span>${workDays} days</span>
+                    
+                    ${fullDays > 0 ? `
+                        <div style="display: flex; justify-content: space-between; padding: 12px; border-bottom: 1px solid #ddd;">
+                            <span>Full Days</span>
+                            <span>${fullDays} days</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; padding: 12px; border-bottom: 1px solid #ddd; padding-left: 30px;">
+                            <span>Daily Rate: ₱${rate.daily.toFixed(2)} × ${fullDays}</span>
+                            <span>₱${fullDaysPay.toFixed(2)}</span>
+                        </div>
+                    ` : ''}
+                    
+                    ${partialHours > 0 ? `
+                        <div style="display: flex; justify-content: space-between; padding: 12px; border-bottom: 1px solid #ddd;">
+                            <span>Undertime</span>
+                            <span>${partialHours.toFixed(2)} hours</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; padding: 12px; border-bottom: 1px solid #ddd; padding-left: 30px;">
+                            <span>Hourly Rate: ₱${hourlyRate.toFixed(2)} × ${partialHours.toFixed(2)}</span>
+                            <span>₱${partialHoursPay.toFixed(2)}</span>
+                        </div>
+                    ` : ''}
+                    
+                    ${overtimeDays > 0 ? `
+                        <div style="display: flex; justify-content: space-between; padding: 12px; border-bottom: 1px solid #ddd; background: #fff8e1;">
+                            <span><strong>Overtime</strong></span>
+                            <span><strong>${overtimeDays} days (${overtimeDays} hrs)</strong></span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; padding: 12px; border-bottom: 1px solid #ddd; padding-left: 30px; background: #fff8e1;">
+                            <span>OT Rate: ₱${rate.ot.toFixed(2)} × ${overtimeDays}</span>
+                            <span><strong style="color: #F57C00;">₱${overtimePay.toFixed(2)}</strong></span>
+                        </div>
+                    ` : ''}
+                    
+                    <div style="display: flex; justify-content: space-between; padding: 12px; border-bottom: 1px solid #ddd; background: #f9f9f9;">
+                        <span><strong>Total Hours Worked</strong></span>
+                        <span><strong>${totalHours.toFixed(2)} hours</strong></span>
                     </div>
-                    <div style="display: flex; justify-content: space-between; padding: 12px; border-bottom: 1px solid #ddd;">
-                        <span>Daily Rate</span>
-                        <span>₱${rate.daily.toFixed(2)}</span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; padding: 12px; border-bottom: 1px solid #ddd;">
-                        <span>Total Hours</span>
-                        <span>${totalHours.toFixed(2)} hours</span>
-                    </div>
+                    
                     <div style="display: flex; justify-content: space-between; padding: 15px; background: #f5f5f5; font-weight: bold; border: 2px solid #333; margin: 10px 0;">
                         <span>GROSS PAY</span>
                         <span>₱${grossPay.toFixed(2)}</span>
@@ -1449,6 +1520,7 @@
             
             return Math.max(0, inMinutes - startTime - graceMinutes);
         }
+
 
         function renderDevices() {
             const authorizedDevices = JSON.parse(localStorage.getItem('authorizedDevices') || '[]');
