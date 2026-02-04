@@ -747,18 +747,23 @@
             const today = new Date().toISOString().split('T')[0];
             const existing = app.records.find(r => r.sid === sid && r.date === today);
             
-            if (existing && existing.in) {
-                return msg('clock-msg', 'Already clocked in today', 'err');
-            }
+            // Check if already clocked in TODAY
+                if (existing && existing.in && !existing.status) {
+                    return msg('clock-msg', 'Already clocked in today', 'err');
+                }
             
             const time = new Date().toLocaleTimeString('en-US', { hour12: false });
             
             if (existing) {
+            // Update existing record for today
                 existing.in = time;
+                existing.out = null;    // ← NEW: Clear any previous clock-out
                 existing.status = null;
-            } else {
+                    } else {
+            // Create new record for today
                 app.records.push({ sid, date: today, in: time, out: null, status: null });
             }
+
             
             saveData();
             msg('clock-msg', `✅ ${s.name} clocked in at ${time}`, 'ok');
@@ -788,8 +793,11 @@
             const today = new Date().toISOString().split('T')[0];
             const rec = app.records.find(r => r.sid === sid && r.date === today);
             
-            if (!rec || !rec.in) return msg('clock-msg', 'Not clocked in yet', 'err');
-            if (rec.out) return msg('clock-msg', 'Already clocked out', 'err');
+            if (!rec) return msg('clock-msg', 'No clock-in record for today', 'err');
+            if (!rec.in) return msg('clock-msg', 'Not clocked in yet today', 'err');
+            if (rec.out) return msg('clock-msg', 'Already clocked out today', 'err');
+            if (rec.status) return msg('clock-msg', 'Cannot clock out - marked as ' + rec.status, 'err');
+
             
             const time = new Date().toLocaleTimeString('en-US', { hour12: false });
             rec.out = time;
