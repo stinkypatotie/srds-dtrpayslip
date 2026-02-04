@@ -187,8 +187,8 @@
     <!-- Sidebar Navigation -->
     <div class="sidebar">
         <div class="sidebar-header">
-            <h1>🏪 Sir Ramos</h1>
-            <div class="subtitle">Drugstore System</div>
+            <h1>🏪 Sir Ramos Drugstore</h1>
+            <div class="subtitle">DTR App</div>
         </div>
         
         <ul class="sidebar-menu" id="sidebar-menu">
@@ -292,13 +292,6 @@
             console.log('⚠️ Firebase not configured. Using localStorage mode.');
         }
 
-        // Admin Password
-        const ADMIN_PASSWORD = "0625Seb1@";
-        let isAdminAuthenticated = false;
-        let adminAuthTimeout = null;
-        let currentEditingStaffId = null;
-        let hideAdminTabs = localStorage.getItem('hideAdminTabs') === 'true';
-
         // Device Authorization (kept in localStorage for device-specific auth)
         function getDeviceId() {
             let deviceId = localStorage.getItem('deviceId');
@@ -388,7 +381,14 @@
                             app.staff = data.staff || [];
                             app.records = data.records || [];
                             app.deductions = data.deductions || [];
-                            app.settings = data.settings || app.settings;
+                            // Merge settings but keep adminPassword
+                            if (data.settings) {
+                                app.settings = {
+                                    ...app.settings,
+                                    ...data.settings,
+                                    adminPassword: app.settings.adminPassword // Always keep default password
+                                };
+                            }
                             console.log('✅ Data loaded from Firebase');
                             localStorage.setItem('staff', JSON.stringify(app.staff));
                             localStorage.setItem('records', JSON.stringify(app.records));
@@ -415,7 +415,12 @@
             app.deductions = JSON.parse(localStorage.getItem('deductions')) || [];
             const savedSettings = JSON.parse(localStorage.getItem('settings'));
             if (savedSettings) {
-                app.settings = savedSettings;
+                // Merge saved settings but keep adminPassword
+                app.settings = {
+                    ...app.settings,
+                    ...savedSettings,
+                    adminPassword: app.settings.adminPassword // Always keep default password
+                };
             }
             console.log('💾 Data loaded from localStorage');
         }
@@ -465,89 +470,25 @@
         }
 
         // Admin Authentication
-        function requireAuth(callback) {
-            if (!isAdminAuthenticated) {
-                document.getElementById('auth-modal').style.display = 'flex';
-                window.pendingAdminAction = callback;
-            } else {
-                callback();
-            }
-        }
-
-        function showAdminLogin() {
-            document.getElementById('auth-modal').style.display = 'flex';
-            document.getElementById('admin-password').focus();
-        }
-
-        function verifyPassword() {
-            const pwd = document.getElementById('admin-password').value;
-            const errorEl = document.getElementById('auth-error');
-            
-            if (pwd === ADMIN_PASSWORD) {
-                isAdminAuthenticated = true;
-                hideAdminTabs = false;
-                localStorage.setItem('hideAdminTabs', 'false');
-                
-                clearTimeout(adminAuthTimeout);
-                adminAuthTimeout = setTimeout(() => {
-                    isAdminAuthenticated = false;
-                    updateAdminStatus();
-                }, 3600000);
-                
-                closeAuthModal();
-                updateAdminStatus();
-                render();
-                
-                if (window.pendingAdminAction) {
-                    window.pendingAdminAction();
-                    window.pendingAdminAction = null;
-                }
-            } else {
-                errorEl.textContent = '❌ Incorrect password';
-            }
-        }
-
-        function closeAuthModal() {
-            document.getElementById('auth-modal').style.display = 'none';
-            document.getElementById('admin-password').value = '';
-            document.getElementById('auth-error').textContent = '';
-        }
-
-        function logout() {
-            isAdminAuthenticated = false;
-            hideAdminTabs = true;
-            localStorage.setItem('hideAdminTabs', 'true');
-            clearTimeout(adminAuthTimeout);
-            updateAdminStatus();
-            render();
-        }
 
         function updateAdminStatus() {
             const statusDiv = document.getElementById('admin-status-sidebar');
             
-            if (isAdminAuthenticated) {
+            if (app.adminMode) {
                 statusDiv.innerHTML = `
                     <div class="admin-badge-sidebar">👤 Admin Mode</div>
                     <div class="admin-status-sidebar" style="margin-bottom: 10px;">
                         Session active
                     </div>
-                    <button class="logout-btn-sidebar" onclick="logout()">Logout</button>
+                    <button class="logout-btn-sidebar" onclick="exitAdminMode()">Exit Admin Mode</button>
                 `;
             } else {
-                if (hideAdminTabs) {
-                    statusDiv.innerHTML = `
-                        <div class="admin-status-sidebar" style="margin-bottom: 10px;">
-                            Admin features hidden
-                        </div>
-                        <button class="login-btn-sidebar" onclick="showAdminLogin()">Login as Admin</button>
-                    `;
-                } else {
-                    statusDiv.innerHTML = `
-                        <div class="admin-status-sidebar">
-                            Not logged in
-                        </div>
-                    `;
-                }
+                statusDiv.innerHTML = `
+                    <div class="admin-status-sidebar" style="margin-bottom: 10px;">
+                        Not in admin mode
+                    </div>
+                    <button class="login-btn-sidebar" onclick="showAdminLogin()">Login as Admin</button>
+                `;
             }
         }
 
@@ -617,27 +558,19 @@
         ];
 
         function nav(view) {
-            const tab = TABS.find(t => t.id === view);
-            if (tab && tab.admin && !isAdminAuthenticated) {
-                requireAuth(() => nav(view));
-                return;
-            }
             app.view = view;
             render();
         }
 
         function render() {
-            // Render sidebar menu
-            const visibleTabs = hideAdminTabs && !isAdminAuthenticated 
-                ? TABS.filter(t => !t.admin)
-                : TABS;
-
+            // Render sidebar menu - filter admin tabs based on admin mode
+            const visibleTabs = TABS.filter(t => !t.admin || app.adminMode);
+            
             document.getElementById('sidebar-menu').innerHTML = visibleTabs.map(t => 
                 `<li>
                     <a href="#" class="${app.view === t.id ? 'active' : ''}" onclick="nav('${t.id}'); return false;">
                         <span class="icon">${t.icon}</span>
                         <span>${t.label}</span>
-                        ${t.admin && !isAdminAuthenticated ? '<span class="lock">🔒</span>' : ''}
                     </a>
                 </li>`
             ).join('');
@@ -655,6 +588,7 @@
             };
             
             document.getElementById('view').innerHTML = views[app.view] ? views[app.view]() : '';
+            updateAdminStatus();
         }
 
         // Clock View
@@ -662,15 +596,22 @@
             return `
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                     <h2 style="margin: 0;">🕐 Clock In/Out</h2>
-                    ${!app.adminMode ? `
-                        <button class="btn-info" onclick="showAdminLogin()" style="padding: 8px 16px;">
-                            🔐 Admin Mode
-                        </button>
-                    ` : `
-                        <button class="btn-danger" onclick="exitAdminMode()" style="padding: 8px 16px;">
-                            🚪 Exit Admin Mode
-                        </button>
-                    `}
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        ${!authorizedDevices.some(d => d.id === deviceId) ? `
+                            <button class="btn-warning" onclick="quickAuthDevice()" style="padding: 8px 16px;">
+                                🔓 Authorize Device
+                            </button>
+                        ` : ''}
+                        ${!app.adminMode ? `
+                            <button class="btn-info" onclick="showAdminLogin()" style="padding: 8px 16px;">
+                                🔐 Admin Mode
+                            </button>
+                        ` : `
+                            <button class="btn-danger" onclick="exitAdminMode()" style="padding: 8px 16px;">
+                                🚪 Exit Admin Mode
+                            </button>
+                        `}
+                    </div>
                 </div>
                 <div class="status">
                     <strong>📅 ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</strong><br>
@@ -681,7 +622,7 @@
                         <label>Select Staff</label>
                         <select id="staff-sel">
                             <option value="">Choose staff...</option>
-                            ${app.staff.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+                            ${app.staff.map(s => `<option value="${s.id}">${s.name} (${s.position})</option>`).join('')}
                         </select>
                     </div>
                     <div class="form-group">
@@ -741,29 +682,28 @@
             const pin = document.getElementById('pin-inp').value;
             if (!sid || !pin) return msg('clock-msg', 'Select staff and enter PIN', 'err');
             
-            const s = app.staff.find(x => x.id === sid);
+            const s = app.staff.find(x => x.id == sid); // Use == to handle string/number comparison
             if (!s || s.pin !== pin) return msg('clock-msg', 'Invalid PIN', 'err');
             
             const today = new Date().toISOString().split('T')[0];
-            const existing = app.records.find(r => r.sid === sid && r.date === today);
+            const existing = app.records.find(r => r.sid == sid && r.date === today); // Use == for sid comparison
             
-            // Check if already clocked in TODAY
-                if (existing && existing.in && !existing.status) {
-                    return msg('clock-msg', 'Already clocked in today', 'err');
-                }
+            // Check if already clocked in TODAY (has time-in and no status like rest/absent)
+            if (existing && existing.in && !existing.status) {
+                return msg('clock-msg', 'Already clocked in today', 'err');
+            }
             
             const time = new Date().toLocaleTimeString('en-US', { hour12: false });
             
             if (existing) {
-            // Update existing record for today
+                // Update existing record for today (might have been marked rest/absent before)
                 existing.in = time;
-                existing.out = null;    // ← NEW: Clear any previous clock-out
+                existing.out = null;
                 existing.status = null;
-                    } else {
-            // Create new record for today
-                app.records.push({ sid, date: today, in: time, out: null, status: null });
+            } else {
+                // Create new record for today
+                app.records.push({ sid: sid, date: today, in: time, out: null, status: null });
             }
-
             
             saveData();
             msg('clock-msg', `✅ ${s.name} clocked in at ${time}`, 'ok');
@@ -787,17 +727,16 @@
             const pin = document.getElementById('pin-inp').value;
             if (!sid || !pin) return msg('clock-msg', 'Select staff and enter PIN', 'err');
             
-            const s = app.staff.find(x => x.id === sid);
+            const s = app.staff.find(x => x.id == sid); // Use == to handle string/number comparison
             if (!s || s.pin !== pin) return msg('clock-msg', 'Invalid PIN', 'err');
             
             const today = new Date().toISOString().split('T')[0];
-            const rec = app.records.find(r => r.sid === sid && r.date === today);
+            const rec = app.records.find(r => r.sid == sid && r.date === today); // Use == for sid comparison
             
             if (!rec) return msg('clock-msg', 'No clock-in record for today', 'err');
             if (!rec.in) return msg('clock-msg', 'Not clocked in yet today', 'err');
             if (rec.out) return msg('clock-msg', 'Already clocked out today', 'err');
             if (rec.status) return msg('clock-msg', 'Cannot clock out - marked as ' + rec.status, 'err');
-
             
             const time = new Date().toLocaleTimeString('en-US', { hour12: false });
             rec.out = time;
@@ -823,6 +762,15 @@
 
         // View DTR
         function renderView() {
+            if (!app.adminMode) {
+                return `
+                    <div style="text-align: center; padding: 50px;">
+                        <h2>🔒 Admin Access Required</h2>
+                        <p style="color: #666; margin: 20px 0;">This page requires admin access.</p>
+                        <button class="btn-primary" onclick="showAdminLogin()">Login as Admin</button>
+                    </div>
+                `;
+            }
             return `
                 <h2>📋 View DTR</h2>
                 <div class="form-grid">
@@ -842,7 +790,7 @@
                         <input type="date" id="view-end" value="${app.end}" onchange="app.end=this.value; render()">
                     </div>
                 </div>
-                ${isAdminAuthenticated ? `
+                ${app.adminMode ? `
                 <div style="margin-bottom: 20px;">
                     <button class="btn-warning" onclick="showMarkOptions()">📝 Mark Attendance</button>
                 </div>
@@ -1076,12 +1024,26 @@
 
         function exitAdminMode() {
             app.adminMode = false;
+            // Redirect to clock page if currently on an admin-only page
+            const currentTab = TABS.find(t => t.id === app.view);
+            if (currentTab && currentTab.admin) {
+                app.view = 'clock';
+            }
             render();
             alert('🚪 Exited admin mode');
         }
 
         // Payroll View
         function renderPayroll() {
+            if (!app.adminMode) {
+                return `
+                    <div style="text-align: center; padding: 50px;">
+                        <h2>🔒 Admin Access Required</h2>
+                        <p style="color: #666; margin: 20px 0;">This page requires admin access.</p>
+                        <button class="btn-primary" onclick="showAdminLogin()">Login as Admin</button>
+                    </div>
+                `;
+            }
             return `
                 <h2>💰 Payroll</h2>
                 <div class="form-grid">
@@ -1237,8 +1199,16 @@
                                 <td colspan="2">${staff.name}</td>
                             </tr>
                             <tr>
-                                <th>Rate per Day x Days Worked</th>
-                                <td colspan="2">₱${roundUp(rt.daily)} x ${workingDays}</td>
+                                <th>Position</th>
+                                <td colspan="2">${staff.position}</td>
+                            </tr>
+                            <tr>
+                                <th>Days Worked</th>
+                                <td colspan="2">${workingDays}</td>
+                            </tr>
+                            <tr>
+                                <th>Rate per Day</th>
+                                <td colspan="2">₱${roundUp(rt.daily)}</td>
                             </tr>
                             <tr>
                                 <th>Regular Pay</th>
@@ -1390,6 +1360,15 @@
 
         // NEW: Deductions View
         function renderDeductions() {
+            if (!app.adminMode) {
+                return `
+                    <div style="text-align: center; padding: 50px;">
+                        <h2>🔒 Admin Access Required</h2>
+                        <p style="color: #666; margin: 20px 0;">This page requires admin access.</p>
+                        <button class="btn-primary" onclick="showAdminLogin()">Login as Admin</button>
+                    </div>
+                `;
+            }
             return `
                 <h2>💸 Cash Advance & Deductions</h2>
                 
@@ -1603,6 +1582,15 @@
 
         // Staff View
         function renderStaff() {
+            if (!app.adminMode) {
+                return `
+                    <div style="text-align: center; padding: 50px;">
+                        <h2>🔒 Admin Access Required</h2>
+                        <p style="color: #666; margin: 20px 0;">This page requires admin access.</p>
+                        <button class="btn-primary" onclick="showAdminLogin()">Login as Admin</button>
+                    </div>
+                `;
+            }
             return `
                 <h2>👥 Manage Staff</h2>
                 <div style="background: white; padding: 20px; border-radius: 6px; border: 1px solid #e0e0e0; margin-bottom: 20px;">
@@ -1702,6 +1690,15 @@
 
         // Export View
         function renderExport() {
+            if (!app.adminMode) {
+                return `
+                    <div style="text-align: center; padding: 50px;">
+                        <h2>🔒 Admin Access Required</h2>
+                        <p style="color: #666; margin: 20px 0;">This page requires admin access.</p>
+                        <button class="btn-primary" onclick="showAdminLogin()">Login as Admin</button>
+                    </div>
+                `;
+            }
             return `
                 <h2>📊 Export Data</h2>
                 <div style="display: grid; gap: 20px;">
@@ -1739,6 +1736,15 @@
 
         // Devices View
         function renderDevices() {
+            if (!app.adminMode) {
+                return `
+                    <div style="text-align: center; padding: 50px;">
+                        <h2>🔒 Admin Access Required</h2>
+                        <p style="color: #666; margin: 20px 0;">This page requires admin access.</p>
+                        <button class="btn-primary" onclick="showAdminLogin()">Login as Admin</button>
+                    </div>
+                `;
+            }
             return `
                 <h2>🔐 Device Management</h2>
                 <div class="status">
@@ -1781,6 +1787,31 @@
             `;
         }
 
+        function quickAuthDevice() {
+            const name = prompt('Enter a name for this device (e.g., Front Desk Tablet, Pharmacy Tablet, Office Computer):');
+            if (!name) {
+                alert('❌ Device name is required to authorize this device.');
+                return;
+            }
+            
+            const existing = authorizedDevices.find(d => d.id === deviceId);
+            if (existing) {
+                alert('✅ This device is already authorized as: ' + existing.name);
+                return;
+            }
+            
+            authorizedDevices.push({
+                id: deviceId,
+                name: name,
+                addedDate: new Date().toISOString(),
+                lastActive: new Date().toISOString()
+            });
+            
+            saveAuthorizedDevices();
+            alert('✅ Device authorized successfully!\n\nDevice: ' + name + '\nID: ' + deviceId + '\n\nYou can now access admin features.');
+            render();
+        }
+
         function authDevice() {
             const name = prompt('Enter a name for this device (e.g., Office Computer, Manager Phone):');
             if (!name) return;
@@ -1811,20 +1842,14 @@
 
         // Settings View
         function renderSettings() {
-            // Ensure telegram settings exist
-            if (!app.settings.telegram) {
-                app.settings.telegram = {
-                    enabled: false,
-                    botToken: '',
-                    chatId: '',
-                    notifications: {
-                        clockIn: true,
-                        clockOut: true,
-                        newDeduction: true,
-                        payrollGenerated: false
-                    }
-                };
-                saveData();
+            if (!app.adminMode) {
+                return `
+                    <div style="text-align: center; padding: 50px;">
+                        <h2>🔒 Admin Access Required</h2>
+                        <p style="color: #666; margin: 20px 0;">This page requires admin access.</p>
+                        <button class="btn-primary" onclick="showAdminLogin()">Login as Admin</button>
+                    </div>
+                `;
             }
             const telegram = app.settings.telegram;
             const deviceName = localStorage.getItem('deviceName') || '';
@@ -2041,6 +2066,15 @@
 
         // Firebase Management View
         function renderFirebase() {
+            if (!app.adminMode) {
+                return `
+                    <div style="text-align: center; padding: 50px;">
+                        <h2>🔒 Admin Access Required</h2>
+                        <p style="color: #666; margin: 20px 0;">This page requires admin access.</p>
+                        <button class="btn-primary" onclick="showAdminLogin()">Login as Admin</button>
+                    </div>
+                `;
+            }
             const status = isFirebaseInitialized ? '✅ Connected' : '❌ Not Connected';
             const statusColor = isFirebaseInitialized ? '#4CAF50' : '#f44336';
 
