@@ -431,31 +431,63 @@
                     .then((snapshot) => {
                         const data = snapshot.val();
                         authorizedDevices = data || [];
+                        console.log('📥 Loaded ' + authorizedDevices.length + ' authorized devices from Firebase');
                         localStorage.setItem('authorizedDevices', JSON.stringify(authorizedDevices));
                         updateDeviceActivity();
                     })
                     .catch((error) => {
-                        console.error('Error loading devices:', error);
-                        authorizedDevices = JSON.parse(localStorage.getItem('authorizedDevices')) || [];
+                        console.error('❌ Error loading devices from Firebase:', error);
+                        const localDevices = JSON.parse(localStorage.getItem('authorizedDevices')) || [];
+                        console.log('💾 Loaded ' + localDevices.length + ' devices from localStorage backup');
+                        authorizedDevices = localDevices;
                         updateDeviceActivity();
                     });
             } else {
                 authorizedDevices = JSON.parse(localStorage.getItem('authorizedDevices')) || [];
+                console.log('💾 Loaded ' + authorizedDevices.length + ' devices from localStorage (Firebase not initialized)');
                 updateDeviceActivity();
             }
         }
 
         function saveAuthorizedDevices() {
             if (isFirebaseInitialized) {
-                db.ref('devices').set(authorizedDevices)
-                    .then(() => {
-                        console.log('✅ Authorized devices saved to Firebase');
-                        localStorage.setItem('authorizedDevices', JSON.stringify(authorizedDevices));
-                    })
-                    .catch((error) => {
-                        console.error('❌ Firebase save failed:', error);
-                        localStorage.setItem('authorizedDevices', JSON.stringify(authorizedDevices));
-                    });
+                // SAFETY CHECK: Don't overwrite Firebase with empty array unless intentional
+                if (authorizedDevices.length === 0) {
+                    console.warn('⚠️ Attempting to save empty device list. Checking Firebase first...');
+                    db.ref('devices').once('value')
+                        .then((snapshot) => {
+                            const existingDevices = snapshot.val();
+                            if (existingDevices && existingDevices.length > 0) {
+                                console.warn('🛡️ SAFETY: Prevented overwriting ' + existingDevices.length + ' devices with empty array!');
+                                console.log('Loading existing devices from Firebase instead...');
+                                authorizedDevices = existingDevices;
+                                localStorage.setItem('authorizedDevices', JSON.stringify(authorizedDevices));
+                                render();
+                                return;
+                            }
+                            // If Firebase is also empty, then it's okay to save empty array
+                            db.ref('devices').set(authorizedDevices)
+                                .then(() => {
+                                    console.log('✅ Authorized devices saved to Firebase (empty list confirmed)');
+                                    localStorage.setItem('authorizedDevices', JSON.stringify(authorizedDevices));
+                                })
+                                .catch((error) => {
+                                    console.error('❌ Firebase save failed:', error);
+                                    localStorage.setItem('authorizedDevices', JSON.stringify(authorizedDevices));
+                                });
+                        });
+                } else {
+                    // Normal save when we have devices
+                    db.ref('devices').set(authorizedDevices)
+                        .then(() => {
+                            console.log('✅ Authorized devices saved to Firebase (' + authorizedDevices.length + ' devices)');
+                            localStorage.setItem('authorizedDevices', JSON.stringify(authorizedDevices));
+                        })
+                        .catch((error) => {
+                            console.error('❌ Firebase save failed:', error);
+                            localStorage.setItem('authorizedDevices', JSON.stringify(authorizedDevices));
+                        });
+                }
             } else {
                 localStorage.setItem('authorizedDevices', JSON.stringify(authorizedDevices));
             }
@@ -622,7 +654,7 @@
                         <label>Select Staff</label>
                         <select id="staff-sel">
                             <option value="">Choose staff...</option>
-                            ${app.staff.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+                            ${app.staff.map(s => `<option value="${s.id}">${s.name})</option>`).join('')}
                         </select>
                     </div>
                     <div class="form-group">
@@ -822,6 +854,70 @@
                     </div>
                     <div id="mark-msg" class="msg" style="display: none; margin-top: 10px;"></div>
                 </div>
+                
+                ${app.adminMode ? `
+                <div style="background: #e3f2fd; padding: 20px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #2196F3;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <h3 style="margin: 0; color: #1976d2;">➕ Manual Time Entry</h3>
+                        <button class="btn-warning" onclick="toggleManualEntry()" id="toggle-manual-btn" style="padding: 6px 12px; font-size: 13px;">
+                            📝 Show Form
+                        </button>
+                    </div>
+                    
+                    <div id="manual-entry-section" style="display: none;">
+                        <p style="color: #666; margin-bottom: 15px; font-size: 14px;">
+                            Add or correct time records manually. Useful for missed clock-ins/outs or backdated entries.
+                        </p>
+                        
+                        <div class="form-grid" style="margin-bottom: 15px;">
+                            <div class="form-group">
+                                <label>Select Staff</label>
+                                <select id="manual-staff">
+                                    <option value="">Choose staff...</option>
+                                    ${app.staff.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Date</label>
+                                <input type="date" id="manual-date" value="${new Date().toISOString().split('T')[0]}">
+                            </div>
+                        </div>
+                        
+                        <div class="form-grid" style="margin-bottom: 15px;">
+                            <div class="form-group">
+                                <label>Login Time</label>
+                                <input type="time" id="manual-login" placeholder="e.g., 09:00">
+                            </div>
+                            <div class="form-group">
+                                <label>Logout Time</label>
+                                <input type="time" id="manual-logout" placeholder="e.g., 18:00">
+                            </div>
+                        </div>
+                        
+                        <div class="form-grid" style="margin-bottom: 15px;">
+                            <div class="form-group">
+                                <label>Status (Optional)</label>
+                                <select id="manual-status">
+                                    <option value="">Regular Day</option>
+                                    <option value="rest">Rest Day</option>
+                                    <option value="absent">Absent</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Notes (Optional)</label>
+                                <input type="text" id="manual-notes" placeholder="e.g., Manually added, Corrected entry">
+                            </div>
+                        </div>
+                        
+                        <div style="display: flex; gap: 10px;">
+                            <button class="btn-primary" onclick="addManualEntry()">➕ Add Manual Entry</button>
+                            <button class="btn-warning" onclick="clearManualForm()">🔄 Clear Form</button>
+                        </div>
+                        <div id="manual-msg" class="msg" style="display: none; margin-top: 15px;"></div>
+                    </div>
+                </div>
+                ` : ''}
+                
                 ${renderDTRTable()}
             `;
         }
@@ -832,6 +928,18 @@
 
         function hideMarkOptions() {
             document.getElementById('mark-section').style.display = 'none';
+        }
+
+        function toggleManualEntry() {
+            const section = document.getElementById('manual-entry-section');
+            const btn = document.getElementById('toggle-manual-btn');
+            if (section.style.display === 'none') {
+                section.style.display = 'block';
+                btn.textContent = '❌ Hide Form';
+            } else {
+                section.style.display = 'none';
+                btn.textContent = '📝 Show Form';
+            }
         }
 
         function markAttendance() {
@@ -1297,7 +1405,7 @@
 
                 const rt = RATES[s.position];
                 const regularPay = roundUp(workingDays * rt.daily);
-                const overtimePay = roundUp(overtimeHours * rt.ot);
+                const overtimePay = roundUp(overtimeHours * rt.ot );
                 const gross = regularPay + overtimePay;
                 
                 // NEW: Calculate total deductions for this period
@@ -2209,6 +2317,144 @@
                 alert('✅ All data has been cleared.');
                 nav('clock');
             }
+        }
+
+        function clearManualForm() {
+            document.getElementById('manual-staff').value = '';
+            document.getElementById('manual-date').value = new Date().toISOString().split('T')[0];
+            document.getElementById('manual-login').value = '';
+            document.getElementById('manual-logout').value = '';
+            document.getElementById('manual-status').value = '';
+            document.getElementById('manual-notes').value = '';
+            const msgEl = document.getElementById('manual-msg');
+            if (msgEl) {
+                msgEl.style.display = 'none';
+            }
+        }
+
+        function addManualEntry() {
+            const staffId = document.getElementById('manual-staff').value;
+            const date = document.getElementById('manual-date').value;
+            const loginTime = document.getElementById('manual-login').value;
+            const logoutTime = document.getElementById('manual-logout').value;
+            const status = document.getElementById('manual-status').value;
+            const notes = document.getElementById('manual-notes').value;
+            
+            // Validation
+            if (!staffId) {
+                return msg('manual-msg', '❌ Please select a staff member', 'err');
+            }
+            if (!date) {
+                return msg('manual-msg', '❌ Please select a date', 'err');
+            }
+            
+            // Check if it's a special status (rest/absent) - times not required
+            if (status && (status === 'rest' || status === 'absent')) {
+                // For rest/absent, we don't need login/logout times
+                const existing = app.records.find(r => r.sid === staffId && r.date === date);
+                if (existing) {
+                    if (!confirm('A record already exists for this staff on this date. Overwrite it?')) {
+                        return;
+                    }
+                    // Update existing record
+                    existing.status = status;
+                    existing.in = null;
+                    existing.out = null;
+                    existing.notes = notes || 'Manually set as ' + (status === 'rest' ? 'Rest Day' : 'Absent');
+                } else {
+                    // Create new record
+                    app.records.push({
+                        id: Date.now(),
+                        sid: staffId,
+                        date: date,
+                        in: null,
+                        out: null,
+                        status: status,
+                        notes: notes || 'Manually set as ' + (status === 'rest' ? 'Rest Day' : 'Absent')
+                    });
+                }
+                
+                saveData();
+                msg('manual-msg', '✅ ' + (status === 'rest' ? 'Rest Day' : 'Absent') + ' recorded successfully!', 'ok');
+                clearManualForm();
+                render();
+                return;
+            }
+            
+            // For regular entries, validate times
+            if (!loginTime && !logoutTime) {
+                return msg('manual-msg', '❌ Please enter at least login or logout time (or select a status)', 'err');
+            }
+            
+            // Validate time format and logic
+            if (loginTime && logoutTime) {
+                const loginHours = parseInt(loginTime.split(':')[0]);
+                const loginMins = parseInt(loginTime.split(':')[1]);
+                const logoutHours = parseInt(logoutTime.split(':')[0]);
+                const logoutMins = parseInt(logoutTime.split(':')[1]);
+                
+                const loginMinutes = loginHours * 60 + loginMins;
+                const logoutMinutes = logoutHours * 60 + logoutMins;
+                
+                if (logoutMinutes <= loginMinutes) {
+                    return msg('manual-msg', '❌ Logout time must be after login time', 'err');
+                }
+            }
+            
+            // Check if record already exists for this staff and date
+            const existing = app.records.find(r => r.sid === staffId && r.date === date);
+            
+            if (existing) {
+                if (!confirm('A record already exists for this staff on this date. Overwrite it?')) {
+                    return;
+                }
+                // Update existing record
+                if (loginTime) existing.in = loginTime;
+                if (logoutTime) existing.out = logoutTime;
+                existing.status = status || null;
+                existing.notes = notes || 'Manually edited';
+                
+                msg('manual-msg', '✅ Record updated successfully!', 'ok');
+            } else {
+                // Create new record
+                const newRecord = {
+                    id: Date.now(),
+                    sid: staffId,
+                    date: date,
+                    in: loginTime || null,
+                    out: logoutTime || null,
+                    status: status || null,
+                    notes: notes || 'Manually added'
+                };
+                
+                app.records.push(newRecord);
+                msg('manual-msg', '✅ Manual entry added successfully!', 'ok');
+            }
+            
+            // Save to Firebase/localStorage
+            saveData();
+            
+            // Send Telegram notification if enabled (for manual entries)
+            if (app.settings.telegram && app.settings.telegram.enabled) {
+                const staff = app.staff.find(s => s.id === staffId);
+                if (staff) {
+                    const deviceName = localStorage.getItem('deviceName') || 'Unknown Device';
+                    let message = `📝 *Manual Entry Added*\n\n`;
+                    message += `👤 Staff: ${staff.name}\n`;
+                    message += `📅 Date: ${date}\n`;
+                    if (loginTime) message += `🟢 Login: ${loginTime}\n`;
+                    if (logoutTime) message += `🔴 Logout: ${logoutTime}\n`;
+                    if (status) message += `📋 Status: ${status === 'rest' ? 'Rest Day' : status === 'absent' ? 'Absent' : status}\n`;
+                    if (notes) message += `📝 Notes: ${notes}\n`;
+                    message += `\n🖥️ Device: ${deviceName}`;
+                    
+                    sendTelegramNotification(message);
+                }
+            }
+            
+            // Clear form and refresh view
+            clearManualForm();
+            render();
         }
 
         function expXL() {
