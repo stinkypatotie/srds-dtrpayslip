@@ -430,9 +430,33 @@
                 db.ref('devices').once('value')
                     .then((snapshot) => {
                         const data = snapshot.val();
-                        authorizedDevices = data || [];
-                        console.log('📥 Loaded ' + authorizedDevices.length + ' authorized devices from Firebase');
-                        localStorage.setItem('authorizedDevices', JSON.stringify(authorizedDevices));
+                        
+                        // Handle Firebase data properly
+                        if (data) {
+                            // Firebase has data - convert to array if needed
+                            if (Array.isArray(data)) {
+                                authorizedDevices = data;
+                            } else if (typeof data === 'object') {
+                                // Firebase converted array to object, convert back
+                                authorizedDevices = Object.values(data);
+                            } else {
+                                authorizedDevices = [];
+                            }
+                            console.log('📥 Loaded ' + authorizedDevices.length + ' authorized devices from Firebase');
+                            localStorage.setItem('authorizedDevices', JSON.stringify(authorizedDevices));
+                        } else {
+                            // Firebase returned null - check localStorage before clearing
+                            const localDevices = JSON.parse(localStorage.getItem('authorizedDevices'));
+                            if (localDevices && localDevices.length > 0) {
+                                console.log('💾 Firebase empty, but found ' + localDevices.length + ' devices in localStorage - restoring them');
+                                authorizedDevices = localDevices;
+                                // Sync back to Firebase
+                                db.ref('devices').set(authorizedDevices);
+                            } else {
+                                console.log('📭 No devices found in Firebase or localStorage');
+                                authorizedDevices = [];
+                            }
+                        }
                         updateDeviceActivity();
                     })
                     .catch((error) => {
@@ -645,7 +669,7 @@
                         `}
                     </div>
                 </div>
-                <div class="status">
+                <div class="status" id="current-datetime">
                     <strong>📅 ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</strong><br>
                     🕐 ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                 </div>
@@ -2563,6 +2587,18 @@
         render();
         updateAdminStatus();
         updateDeviceActivity();
+
+        // Update clock every second
+        setInterval(() => {
+            const clockElement = document.getElementById('current-datetime');
+            if (clockElement && app.view === 'clock') {
+                const now = new Date();
+                clockElement.innerHTML = `
+                    <strong>📅 ${now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</strong><br>
+                    🕐 ${now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                `;
+            }
+        }, 1000);
     </script>
 </body>
 </html>
