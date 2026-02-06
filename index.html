@@ -272,6 +272,9 @@
             console.error('❌ Firebase initialization failed:', error);
             console.log('📝 Using localStorage as fallback');
         }
+
+
+
         // Check if Firebase config is set up
         const isFirebaseConfigured = !firebaseConfig.apiKey.includes('YOUR_');
 
@@ -675,7 +678,7 @@
                         <label>Select Staff</label>
                         <select id="staff-sel">
                             <option value="">Choose staff...</option>
-                            ${app.staff.map(s => `<option value="${s.id}">${s.name})</option>`).join('')}
+                            ${app.staff.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
                         </select>
                     </div>
                     <div class="form-group">
@@ -1328,6 +1331,10 @@
                                 <td colspan="2">${staff.name}</td>
                             </tr>
                             <tr>
+                                <th>Position</th>
+                                <td colspan="2">${staff.position}</td>
+                            </tr>
+                            <tr>
                                 <th>Days Worked</th>
                                 <td colspan="2">${workingDays}</td>
                             </tr>
@@ -1668,11 +1675,11 @@
             
             // Send Telegram notification
             if (app.settings.telegram.enabled && app.settings.telegram.notifications.newDeduction) {
-                const notifMessage = `💸 <b>New Deduction Recorded</b>\n\n` +
-                    `<b>Employee:</b> ${staff.name}\n` +
-                    `<b>Amount:</b> ₱${amount.toFixed(2)}\n` +
-                    `<b>Reason:</b> ${deduction.reason}\n` +
-                    `<b>Deduction Date:</b> ${new Date(deductionDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}\n` +
+                const notifMessage = `💸 <b>New Deduction Recorded</b>\\n\\n` +
+                    `<b>Employee:</b> ${staff.name}\\n` +
+                    `<b>Amount:</b> ₱${amount.toFixed(2)}\\n` +
+                    `<b>Reason:</b> ${deduction.reason}\\n` +
+                    `<b>Deduction Date:</b> ${new Date(deductionDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}\\n` +
                     `<b>Recorded:</b> ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`;
                 sendTelegramNotification(notifMessage);
             }
