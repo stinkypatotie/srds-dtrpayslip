@@ -2599,6 +2599,30 @@
                 `;
             }
         }, 1000);
+
+		// Update clock every second and check for date changes
+        let lastDate = new Date().toISOString().split('T')[0];
+
+        setInterval(() => {
+            const now = new Date();
+            const currentDate = now.toISOString().split('T')[0];
+            
+            // Update clock display
+            const clockElement = document.getElementById('current-datetime');
+            if (clockElement && app.view === 'clock') {
+                clockElement.innerHTML = `
+                    <strong>📅 ${now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</strong><br>
+                    🕐 ${now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                `;
+            }
+            
+            // Check if date changed (midnight passed)
+            if (currentDate !== lastDate) {
+                console.log('📅 Date changed from', lastDate, 'to', currentDate, '- refreshing view');
+                lastDate = currentDate;
+                render(); // Refresh to show new day
+            }
+        }, 1000);
     </script>
 </body>
 </html>
