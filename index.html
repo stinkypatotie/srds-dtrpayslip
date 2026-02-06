@@ -1335,12 +1335,8 @@
                                 <td colspan="2">${staff.position}</td>
                             </tr>
                             <tr>
-                                <th>Days Worked</th>
-                                <td colspan="2">${workingDays}</td>
-                            </tr>
-                            <tr>
-                                <th>Rate per Day</th>
-                                <td colspan="2">₱${roundUp(rt.daily)}</td>
+                                <th>Days Worked x Rate per Day</th>
+                                <td colspan="2">${workingDays} days x ₱${roundUp(rt.daily)}</td>
                             </tr>
                             <tr>
                                 <th>Regular Pay</th>
@@ -1348,8 +1344,8 @@
                             </tr>
                             ${overtimeHours > 0 ? `
                             <tr>
-                                <th>Overtime Hours</th>
-                                <td colspan="2">${overtimeHours} hr @ ₱${roundUp(rt.ot)}/hr</td>
+                                <th># of Overtime x OT Rate</th>
+                                <td colspan="2">${overtimeHours} hr x ₱${roundUp(rt.ot)}/hr</td>
                             </tr>
                             <tr>
                                 <th>Overtime Pay</th>
@@ -1363,16 +1359,19 @@
                             ${totalDeductions > 0 ? `
                             <tr>
                                 <th>Deductions</th>
-                                <td colspan="2" style="color: #f44336;">-₱${totalDeductions}</td>
                             </tr>
                             ${deductionsInPeriod.map(d => `
                             <tr>
-                                <th style="padding-left: 30px; font-weight: normal; background: #f9f9f9;">• ${d.reason || 'Cash Advance'}</th>
-                                <td colspan="2" style="color: #f44336; background: #f9f9f9;">-₱${roundUp(d.amount)}</td>
-                            </tr>
+								<th style="padding-left: 30px; font-weight: normal; background: #29a1bb;">• ${d.reason || 'Cash Advance'}</th>
+                                <td colspan="2" style="color: #f44336;">-₱${roundUp(d.amount)}</td>
+							</tr>
                             `).join('')}
                             ` : ''}
-                            <tr class="total-row">
+                            <tr>
+								<th>Total Deduction</th>
+								<td colspan="2" style="color: #f44336;">-₱${totalDeductions}</td>
+							</tr>
+							<tr class="total-row">
                                 <th>NET PAY</th>
                                 <td colspan="2">₱${net}</td>
                             </tr>
