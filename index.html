@@ -1674,7 +1674,7 @@
             
             // Send Telegram notification
             if (app.settings.telegram.enabled && app.settings.telegram.notifications.newDeduction) {
-                const notifMessage = `💸 <b>New Deduction Recorded</b>\\n\\n` +
+                const notifMessage = `💸 <b>New Deduction Recorded</b>\n\n` +
                     `<b>Employee:</b> ${staff.name}\n` +
                     `<b>Amount:</b> ₱${amount.toFixed(2)}\n` +
                     `<b>Reason:</b> ${deduction.reason}\n` +
