@@ -1675,10 +1675,10 @@
             // Send Telegram notification
             if (app.settings.telegram.enabled && app.settings.telegram.notifications.newDeduction) {
                 const notifMessage = `💸 <b>New Deduction Recorded</b>\\n\\n` +
-                    `<b>Employee:</b> ${staff.name}\\n` +
-                    `<b>Amount:</b> ₱${amount.toFixed(2)}\\n` +
-                    `<b>Reason:</b> ${deduction.reason}\\n` +
-                    `<b>Deduction Date:</b> ${new Date(deductionDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}\\n` +
+                    `<b>Employee:</b> ${staff.name}\n` +
+                    `<b>Amount:</b> ₱${amount.toFixed(2)}\n` +
+                    `<b>Reason:</b> ${deduction.reason}\n` +
+                    `<b>Deduction Date:</b> ${new Date(deductionDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}\n` +
                     `<b>Recorded:</b> ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`;
                 sendTelegramNotification(notifMessage);
             }
