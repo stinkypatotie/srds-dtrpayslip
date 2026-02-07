@@ -697,8 +697,11 @@
 
         function renderTodayRecords() {
             const today = new Date().toISOString().split('T')[0];
+            console.log('🔍 Rendering today\'s records. Today is:', today);
+            console.log('📋 All records:', app.records.map(r => r.date));
             const todayRecs = app.records.filter(r => r.date === today);
-            
+            console.log('✅ Found', todayRecs.length, 'records for today');
+
             if (todayRecs.length === 0) {
                 return '<p style="color: #666; margin-top: 20px;">No records for today yet.</p>';
             }
@@ -2599,7 +2602,7 @@
             }
         }, 1000);
 
-		// Update clock every second and check for date changes
+		        // Update clock every second and check for date changes
         let lastDate = new Date().toISOString().split('T')[0];
 
         setInterval(() => {
@@ -2619,9 +2622,15 @@
             if (currentDate !== lastDate) {
                 console.log('📅 Date changed from', lastDate, 'to', currentDate, '- refreshing view');
                 lastDate = currentDate;
+                
+                // Force complete re-render by clearing the view first
+                if (app.view === 'clock') {
+                    document.getElementById('view').innerHTML = '';
+                }
                 render(); // Refresh to show new day
             }
         }, 1000);
+
     </script>
 </body>
 </html>
