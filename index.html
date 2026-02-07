@@ -649,8 +649,10 @@
 
         // Clock View
         function renderClock() {
-            
-    const today = new Date().toISOString().split('T')[0];
+
+        return `
+        
+        const today = new Date().toISOString().split('T')[0];
     const todayRecs = app.records.filter(r => r.date === today);
     
     return `
@@ -665,9 +667,6 @@
         </div>
         
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-
-            
-            return `
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                     <h2 style="margin: 0;">🕐 Clock In/Out</h2>
                     <div style="display: flex; gap: 10px; flex-wrap: wrap;">
