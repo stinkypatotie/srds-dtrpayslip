@@ -656,15 +656,6 @@
     const todayRecs = app.records.filter(r => r.date === today);
     
     return `
-        <!-- DEBUG PANEL - Remove this later -->
-        <div style="background: #fff3cd; padding: 15px; border-radius: 4px; margin-bottom: 20px; border-left: 4px solid #FF9800; font-size: 12px;">
-            <strong>🐛 DEBUG INFO:</strong><br>
-            Current Date: ${today}<br>
-            Total Records: ${app.records.length}<br>
-            Today's Records: ${todayRecs.length}<br>
-            All Record Dates: ${app.records.map(r => r.date).join(', ') || 'None'}<br>
-            Last 5 Records: ${JSON.stringify(app.records.slice(-5).map(r => ({date: r.date, name: app.staff.find(s => s.id === r.sid)?.name, in: r.in, out: r.out})))}<br>
-        </div>
         
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
