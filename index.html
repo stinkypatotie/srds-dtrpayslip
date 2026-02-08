@@ -663,8 +663,11 @@
 
         // Clock View
         function renderClock() {
-    const today = new Date().toISOString().split('T')[0];
-    const todayRecs = app.records.filter(r => r.date === today);
+			const now = new Date();
+			const today = now.getFullYear() + '-' + 
+					String(now.getMonth() + 1).padStart(2, '0') + '-' + 
+					String(now.getDate()).padStart(2, '0');
+			const todayRecs = app.records.filter(r => r.date === today);
     
     return `
         <div style="background: #fff3cd; padding: 15px; border-radius: 4px; margin-bottom: 20px; border-left: 4px solid #FF9800; font-size: 12px;">
@@ -721,7 +724,10 @@
 
 
         function renderTodayRecords() {
-            const today = new Date().toISOString().split('T')[0];
+            const now = new Date();
+			const today = now.getFullYear() + '-' + 
+              String(now.getMonth() + 1).padStart(2, '0') + '-' + 
+              String(now.getDate()).padStart(2, '0');
             console.log('🔍 Rendering today\'s records. Today is:', today);
             console.log('📋 All records:', app.records.map(r => r.date));
             const todayRecs = app.records.filter(r => r.date === today);
@@ -776,7 +782,10 @@
             const s = app.staff.find(x => x.id == sid); // Use == to handle string/number comparison
             if (!s || s.pin !== pin) return msg('clock-msg', 'Invalid PIN', 'err');
             
-            const today = new Date().toISOString().split('T')[0];
+            const now = new Date();
+				const today = now.getFullYear() + '-' + 
+				String(now.getMonth() + 1).padStart(2, '0') + '-' + 
+				String(now.getDate()).padStart(2, '0');
             const existing = app.records.find(r => r.sid == sid && r.date === today); // Use == for sid comparison
             
             // Check if already clocked in TODAY (has time-in and no status like rest/absent)
@@ -821,7 +830,10 @@
             const s = app.staff.find(x => x.id == sid); // Use == to handle string/number comparison
             if (!s || s.pin !== pin) return msg('clock-msg', 'Invalid PIN', 'err');
             
-            const today = new Date().toISOString().split('T')[0];
+            const now = new Date();
+				const today = now.getFullYear() + '-' + 
+				String(now.getMonth() + 1).padStart(2, '0') + '-' + 
+				String(now.getDate()).padStart(2, '0');
             const rec = app.records.find(r => r.sid == sid && r.date === today); // Use == for sid comparison
             
             if (!rec) return msg('clock-msg', 'No clock-in record for today', 'err');
@@ -1394,10 +1406,6 @@
                             <tr>
                                 <th>Employee Name</th>
                                 <td colspan="2">${staff.name}</td>
-                            </tr>
-                            <tr>
-                                <th>Position</th>
-                                <td colspan="2">${staff.position}</td>
                             </tr>
                             ${fullDays > 0 ? `
                             <tr>
@@ -2769,11 +2777,16 @@
         }, 1000);
 
 		        // Update clock every second and check for date changes
-        let lastDate = new Date().toISOString().split('T')[0];
+					let now = new Date();
+					let lastDate = now.getFullYear() + '-' + 
+					String(now.getMonth() + 1).padStart(2, '0') + '-' + 
+					String(now.getDate()).padStart(2, '0');
 
         setInterval(() => {
             const now = new Date();
-            const currentDate = now.toISOString().split('T')[0];
+            const currentDate = now.getFullYear() + '-' + 
+                    String(now.getMonth() + 1).padStart(2, '0') + '-' + 
+                    String(now.getDate()).padStart(2, '0');
             
             // Update clock display
             const clockElement = document.getElementById('current-datetime');
