@@ -115,7 +115,7 @@
             padding: 20px;
             width: calc(100% - 250px);
         }
-        .container { max-width: 1200px; margin: 0 auto; width: 100%; }
+        .container { max-width: 1400px; margin: 0 auto; width: 100%; }
         .header { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
         .header h1 { font-size: 28px; color: #333; margin-bottom: 20px; }
         .tabs { display: none; } /* Hide old tabs */
@@ -132,9 +132,9 @@
         .btn-danger { background: #f44336; color: white; }
         .btn-info { background: #2196F3; color: white; }
         .item { background: #f9f9f9; padding: 15px; border-radius: 6px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th { background: #2196F3; color: white; padding: 12px; text-align: left; border: 1px solid #ddd; }
-        td { padding: 10px; border: 1px solid #ddd; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 13px; }
+        th { background: #2196F3; color: white; padding: 12px 8px; text-align: left; border: 1px solid #ddd; font-size: 12px; }
+        td { padding: 10px 8px; border: 1px solid #ddd; }
         tr:nth-child(even) { background: #f9f9f9; }
         .status { background: #e8f5e9; padding: 10px; border-radius: 4px; margin-bottom: 20px; border-left: 4px solid #4CAF50; }
         .status.warn { background: #fff3cd; border-left-color: #FF9800; }
@@ -159,6 +159,10 @@
         .btn-cancel { background: #757575; color: white; padding: 6px 12px; font-size: 12px; }
         .edit-input { padding: 4px 8px; border: 1px solid #2196F3; border-radius: 4px; font-size: 13px; width: 80px; }
         
+        /* Undertime highlight */
+        .undertime-row { background: #fff3e0 !important; }
+        .undertime-badge { background: #FF9800; color: white; padding: 2px 6px; border-radius: 3px; font-size: 11px; }
+        
         /* Simplified payslip styles */
         .payslip-simple { margin-top: 20px; }
         .payslip-simple table { margin-top: 10px; }
@@ -175,6 +179,8 @@
                 margin-left: 0;
                 width: 100%;
             }
+            table { font-size: 11px; }
+            th, td { padding: 8px 4px; }
         }
         
         @media print { 
@@ -312,6 +318,7 @@
             deductions: [], // NEW: Store cash advances/deductions
             settings: {
                 adminPassword: '0625Seb1@', // Global admin password
+                fullShiftHours: 9.5, // NEW: Define what constitutes a full shift (can be changed in settings)
                 telegram: {
                     enabled: false,
                     botToken: '',
@@ -336,6 +343,11 @@
             senior: { daily: 700, ot: 73 },
             trainee: { daily: 500, ot: 53 }
         };
+
+        // NEW: Calculate hourly rate from daily rate
+        function getHourlyRate(position) {
+            return RATES[position].daily / 12;
+        }
 
         // Save and Load Data
         function saveData() {
@@ -386,7 +398,8 @@
                                 app.settings = {
                                     ...app.settings,
                                     ...data.settings,
-                                    adminPassword: app.settings.adminPassword // Always keep default password
+                                    adminPassword: app.settings.adminPassword, // Always keep default password
+                                    fullShiftHours: data.settings.fullShiftHours || 9.5 // Load full shift hours setting
                                 };
                             }
                             console.log('✅ Data loaded from Firebase');
@@ -419,7 +432,8 @@
                 app.settings = {
                     ...app.settings,
                     ...savedSettings,
-                    adminPassword: app.settings.adminPassword // Always keep default password
+                    adminPassword: app.settings.adminPassword, // Always keep default password
+                    fullShiftHours: savedSettings.fullShiftHours || 9.5
                 };
             }
             console.log('💾 Data loaded from localStorage');
@@ -725,6 +739,7 @@
                             <th>Staff</th>
                             <th>Clock In</th>
                             <th>Clock Out</th>
+                            <th>Hours</th>
                             <th>Status</th>
                         </tr>
                     </thead>
@@ -732,12 +747,18 @@
                         ${todayRecs.map(r => {
                             const staff = app.staff.find(s => s.id === r.sid);
                             const statusLabels = { rest: '🏖️ Rest Day', absent: '❌ Absent' };
-                            const status = r.status ? statusLabels[r.status] : (r.out ? '✅ Complete' : '⏳ In Progress');
+                            const hours = r.status ? '-' : calcH(r.in, r.out).toFixed(2);
+                            const isUndertime = !r.status && r.out && calcH(r.in, r.out) < app.settings.fullShiftHours;
+                            let status = r.status ? statusLabels[r.status] : (r.out ? '✅ Complete' : '⏳ In Progress');
+                            if (isUndertime) {
+                                status = '<span class="undertime-badge">⚠️ Undertime</span>';
+                            }
                             return `
-                                <tr>
+                                <tr ${isUndertime ? 'class="undertime-row"' : ''}>
                                     <td>${staff ? staff.name : 'Unknown'}</td>
                                     <td>${r.in || '-'}</td>
                                     <td>${r.out || '-'}</td>
+                                    <td>${hours}${isUndertime ? ' hrs' : ''}</td>
                                     <td>${status}</td>
                                 </tr>
                             `;
@@ -814,15 +835,18 @@
             const hours = calcH(rec.in, time);
             
             saveData();
-            msg('clock-msg', `✅ ${s.name} clocked out at ${time}`, 'ok');
+            msg('clock-msg', `✅ ${s.name} clocked out at ${time} (${hours.toFixed(2)} hours)`, 'ok');
             
             // Send Telegram notification with device info
             if (app.settings.telegram.enabled && app.settings.telegram.notifications.clockOut) {
                 const deviceName = localStorage.getItem('deviceName') || 'Unknown Device';
+                const isUndertime = hours < app.settings.fullShiftHours;
                 const notifMessage = `🔴 <b>Time-Out</b>\n\n` +
                     `<b>Name:</b> ${s.name}\n` +
                     `<b>Date:</b> ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}\n` +
                     `<b>Time:</b> ${time}\n` +
+                    `<b>Hours Worked:</b> ${hours.toFixed(2)} hours\n` +
+                    `${isUndertime ? `<b>⚠️ Status:</b> Undertime\n` : ''}` +
                     `<b>Device:</b> ${deviceName}`;
                 sendTelegramNotification(notifMessage);
             }
@@ -1038,7 +1062,11 @@
                             const s = app.staff.find(x => x.id === r.sid);
                             const hours = r.status ? '-' : calcH(r.in, r.out).toFixed(2);
                             const statusLabels = { rest: '🏖️ Rest Day', absent: '❌ Absent' };
-                            const status = r.status ? statusLabels[r.status] : (r.out ? '✅ Complete' : '⏳ Ongoing');
+                            const isUndertime = !r.status && r.out && calcH(r.in, r.out) < app.settings.fullShiftHours;
+                            let status = r.status ? statusLabels[r.status] : (r.out ? '✅ Complete' : '⏳ Ongoing');
+                            if (isUndertime) {
+                                status = '<span class="undertime-badge">⚠️ Undertime</span>';
+                            }
                             const isEditing = app.editingRecord && app.editingRecord.sid === r.sid && app.editingRecord.date === r.date;
                             
                             if (isEditing) {
@@ -1064,7 +1092,7 @@
                             }
                             
                             return `
-                                <tr>
+                                <tr ${isUndertime ? 'class="undertime-row"' : ''}>
                                     <td>${r.date}</td>
                                     <td>${s ? s.name : 'Unknown'}</td>
                                     <td>${s ? s.position : '-'}</td>
@@ -1192,6 +1220,16 @@
             }
             return `
                 <h2>💰 Payroll</h2>
+                
+                <div class="info-box">
+                    <strong>💡 Undertime Calculation:</strong>
+                    <small>
+                        Employees working less than ${app.settings.fullShiftHours} hours will be paid per hour worked.<br>
+                        <strong>Formula:</strong> Hourly Rate = Daily Rate ÷ 12 hours<br>
+                        <strong>Pay:</strong> Hours Worked × Hourly Rate
+                    </small>
+                </div>
+                
                 <div class="form-grid">
                     <div class="form-group">
                         <label>Start Date</label>
@@ -1221,22 +1259,32 @@
                 return r.sid === staffId && rd >= new Date(app.start) && rd <= new Date(app.end);
             });
 
-            // Calculate working days and overtime
-            let workingDays = 0;
+            // Calculate working days, undertime days, and overtime
+            let fullDays = 0;
+            let undertimeDays = 0;
+            let undertimeHours = 0;
             let overtimeHours = 0;
             
             recs.forEach(r => {
                 if (!r.status) {
                     const h = calcH(r.in, r.out);
-                    if (h >= 9.5) workingDays++;
-                    overtimeHours += calcOT(r.out);
+                    if (h >= app.settings.fullShiftHours) {
+                        fullDays++;
+                        overtimeHours += calcOT(r.out);
+                    } else if (h > 0) {
+                        undertimeDays++;
+                        undertimeHours += h;
+                    }
                 }
             });
 
             const rt = RATES[staff.position];
-            const regularPay = roundUp(workingDays * rt.daily);
+            const hourlyRate = getHourlyRate(staff.position);
+            
+            const regularPay = roundUp(fullDays * rt.daily);
+            const undertimePay = roundUp(undertimeHours * hourlyRate);
             const overtimePay = roundUp(overtimeHours * rt.ot);
-            const gross = regularPay + overtimePay;
+            const gross = regularPay + undertimePay + overtimePay;
 
             // Get deductions for this period
             const deductionsInPeriod = app.deductions.filter(d => {
@@ -1304,6 +1352,9 @@
                         tr:nth-child(even) {
                             background: #f9f9f9;
                         }
+                        .undertime-row {
+                            background: #fff3e0 !important;
+                        }
                         .total-row {
                             background: #e3f2fd !important;
                             font-weight: bold;
@@ -1348,14 +1399,30 @@
                                 <th>Position</th>
                                 <td colspan="2">${staff.position}</td>
                             </tr>
+                            ${fullDays > 0 ? `
                             <tr>
-                                <th>Days Worked x Rate per Day</th>
-                                <td colspan="2">${workingDays} days x ₱${roundUp(rt.daily)}</td>
+                                <th>Full Days Worked x Rate per Day</th>
+                                <td colspan="2">${fullDays} days x ₱${roundUp(rt.daily)}</td>
                             </tr>
                             <tr>
                                 <th>Regular Pay</th>
                                 <td colspan="2">₱${regularPay}</td>
                             </tr>
+                            ` : ''}
+                            ${undertimeDays > 0 ? `
+                            <tr class="undertime-row">
+                                <th>⚠️ Undertime Days</th>
+                                <td colspan="2">${undertimeDays} days (${undertimeHours.toFixed(2)} hours total)</td>
+                            </tr>
+                            <tr class="undertime-row">
+                                <th>Hourly Rate (₱${rt.daily} ÷ 12)</th>
+                                <td colspan="2">₱${hourlyRate.toFixed(2)}/hour</td>
+                            </tr>
+                            <tr class="undertime-row">
+                                <th>Undertime Pay</th>
+                                <td colspan="2">₱${undertimePay}</td>
+                            </tr>
+                            ` : ''}
                             ${overtimeHours > 0 ? `
                             <tr>
                                 <th># of Overtime x OT Rate</th>
@@ -1376,16 +1443,16 @@
                             </tr>
                             ${deductionsInPeriod.map(d => `
                             <tr>
-								<th style="padding-left: 30px; font-weight: normal; background: #29a1bb;">• ${d.reason || 'Cash Advance'}</th>
+                                <th style="padding-left: 30px; font-weight: normal; background: #29a1bb;">• ${d.reason || 'Cash Advance'}</th>
                                 <td colspan="2" style="color: #f44336;">-₱${roundUp(d.amount)}</td>
-							</tr>
+                            </tr>
                             `).join('')}
                             ` : ''}
                             <tr>
-								<th>Total Deduction</th>
-								<td colspan="2" style="color: #f44336;">-₱${totalDeductions}</td>
-							</tr>
-							<tr class="total-row">
+                                <th>Total Deduction</th>
+                                <td colspan="2" style="color: #f44336;">-₱${totalDeductions}</td>
+                            </tr>
+                            <tr class="total-row">
                                 <th>NET PAY</th>
                                 <td colspan="2">₱${net}</td>
                             </tr>
@@ -1430,22 +1497,33 @@
                     return r.sid === s.id && rd >= new Date(app.start) && rd <= new Date(app.end);
                 });
 
-                let workingDays = 0;
+                let fullDays = 0;
+                let undertimeDays = 0;
+                let undertimeHours = 0;
                 let overtimeHours = 0;
+                
                 recs.forEach(r => {
                     if (!r.status) {
                         const h = calcH(r.in, r.out);
-                        if (h >= 9.5) workingDays++;
-                        overtimeHours += calcOT(r.out);
+                        if (h >= app.settings.fullShiftHours) {
+                            fullDays++;
+                            overtimeHours += calcOT(r.out);
+                        } else if (h > 0) {
+                            undertimeDays++;
+                            undertimeHours += h;
+                        }
                     }
                 });
 
                 const rt = RATES[s.position];
-                const regularPay = roundUp(workingDays * rt.daily);
-                const overtimePay = roundUp(overtimeHours * rt.ot );
-                const gross = regularPay + overtimePay;
+                const hourlyRate = getHourlyRate(s.position);
                 
-                // NEW: Calculate total deductions for this period
+                const regularPay = roundUp(fullDays * rt.daily);
+                const undertimePay = roundUp(undertimeHours * hourlyRate);
+                const overtimePay = roundUp(overtimeHours * rt.ot);
+                const gross = regularPay + undertimePay + overtimePay;
+                
+                // Calculate total deductions for this period
                 const deductionsInPeriod = app.deductions.filter(d => {
                     const deductDate = new Date(d.deductionDate);
                     return d.staffId === s.id && 
@@ -1457,51 +1535,81 @@
                 const totalDeductions = roundUp(deductionsInPeriod.reduce((sum, d) => sum + d.amount, 0));
                 const net = gross - totalDeductions;
 
-                return { s, workingDays, overtimeHours, regularPay, overtimePay, gross, totalDeductions, net, deductionsInPeriod };
+                return { 
+                    s, 
+                    fullDays, 
+                    undertimeDays, 
+                    undertimeHours, 
+                    overtimeHours, 
+                    regularPay, 
+                    undertimePay, 
+                    overtimePay, 
+                    gross, 
+                    totalDeductions, 
+                    net, 
+                    deductionsInPeriod,
+                    hourlyRate 
+                };
             });
 
             return `
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Staff</th>
-                            <th>Position</th>
-                            <th>Working Days</th>
-                            <th>OT Hours</th>
-                            <th>Regular Pay</th>
-                            <th>OT Pay</th>
-                            <th>Gross Pay</th>
-                            <th>Deductions</th>
-                            <th>Net Pay</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${payrollData.map(p => `
+                <div style="overflow-x: auto;">
+                    <table>
+                        <thead>
                             <tr>
-                                <td>${p.s.name}</td>
-                                <td>${p.s.position}</td>
-                                <td>${p.workingDays}</td>
-                                <td>${p.overtimeHours}</td>
-                                <td>₱${p.regularPay}</td>
-                                <td>${p.overtimeHours > 0 ? '₱' + p.overtimePay : '-'}</td>
-                                <td>₱${p.gross}</td>
-                                <td style="color: ${p.totalDeductions > 0 ? '#f44336' : '#666'};">
-                                    ${p.totalDeductions > 0 ? '-₱' + p.totalDeductions : '₱0'}
-                                    ${p.deductionsInPeriod.length > 0 ? `<br><small style="color: #666;">(${p.deductionsInPeriod.length} deduction${p.deductionsInPeriod.length > 1 ? 's' : ''})</small>` : ''}
-                                </td>
-                                <td><strong>₱${p.net}</strong></td>
-                                <td>
-                                    <button class="btn-primary" onclick="printPayslip('${p.s.id}')" style="padding: 8px 16px; font-size: 13px;">
-                                        🖨️ Print
-                                    </button>
-                                </td>
+                                <th>Staff</th>
+                                <th>Position</th>
+                                <th>Full Days</th>
+                                <th>Undertime</th>
+                                <th>OT Hrs</th>
+                                <th>Regular Pay</th>
+                                <th>Undertime Pay</th>
+                                <th>OT Pay</th>
+                                <th>Gross Pay</th>
+                                <th>Deductions</th>
+                                <th>Net Pay</th>
+                                <th>Actions</th>
                             </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            ${payrollData.map(p => `
+                                <tr ${p.undertimeDays > 0 ? 'class="undertime-row"' : ''}>
+                                    <td>${p.s.name}</td>
+                                    <td>${p.s.position}</td>
+                                    <td>${p.fullDays}</td>
+                                    <td>
+                                        ${p.undertimeDays > 0 ? `
+                                            <strong style="color: #FF9800;">${p.undertimeDays}</strong> days<br>
+                                            <small>(${p.undertimeHours.toFixed(1)} hrs @ ₱${p.hourlyRate.toFixed(2)}/hr)</small>
+                                        ` : '-'}
+                                    </td>
+                                    <td>${p.overtimeHours || '-'}</td>
+                                    <td>₱${p.regularPay}</td>
+                                    <td ${p.undertimePay > 0 ? 'style="background: #fff3e0;"' : ''}>
+                                        ${p.undertimePay > 0 ? '₱' + p.undertimePay : '-'}
+                                    </td>
+                                    <td>${p.overtimeHours > 0 ? '₱' + p.overtimePay : '-'}</td>
+                                    <td><strong>₱${p.gross}</strong></td>
+                                    <td style="color: ${p.totalDeductions > 0 ? '#f44336' : '#666'};">
+                                        ${p.totalDeductions > 0 ? '-₱' + p.totalDeductions : '₱0'}
+                                        ${p.deductionsInPeriod.length > 0 ? `<br><small style="color: #666;">(${p.deductionsInPeriod.length} deduction${p.deductionsInPeriod.length > 1 ? 's' : ''})</small>` : ''}
+                                    </td>
+                                    <td><strong>₱${p.net}</strong></td>
+                                    <td>
+                                        <button class="btn-primary" onclick="printPayslip('${p.s.id}')" style="padding: 8px 16px; font-size: 13px; white-space: nowrap;">
+                                            🖨️ Print
+                                        </button>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
             `;
         }
+
+        // Continue with rest of the functions...
+        // (I'll include the remaining functions in the next part due to length)
 
         // NEW: Deductions View
         function renderDeductions() {
@@ -1764,26 +1872,30 @@
                 
                 <h3 style="margin-bottom: 15px;">Current Staff (${app.staff.length})</h3>
                 ${app.staff.length === 0 ? '<p style="color: #666;">No staff members yet. Add one above!</p>' : 
-                    app.staff.map(s => `
-                        <div class="item">
-                            <div>
-                                <strong style="font-size: 16px;">${s.name}</strong><br>
-                                <span style="color: #666; font-size: 14px;">
-                                    ${s.position.charAt(0).toUpperCase() + s.position.slice(1)} • 
-                                    ₱${RATES[s.position].daily}/day • 
-                                    PIN: ${'*'.repeat(4)}
-                                </span>
+                    app.staff.map(s => {
+                        const hourlyRate = getHourlyRate(s.position);
+                        return `
+                            <div class="item">
+                                <div>
+                                    <strong style="font-size: 16px;">${s.name}</strong><br>
+                                    <span style="color: #666; font-size: 14px;">
+                                        ${s.position.charAt(0).toUpperCase() + s.position.slice(1)} • 
+                                        ₱${RATES[s.position].daily}/day • 
+                                        ₱${hourlyRate.toFixed(2)}/hr (undertime) • 
+                                        PIN: ${'*'.repeat(4)}
+                                    </span>
+                                </div>
+                                <div class="action-buttons">
+                                    <button class="btn-warning" onclick="openEditModal('${s.id}')" style="padding: 8px 16px;">
+                                        ✏️ Edit
+                                    </button>
+                                    <button class="btn-danger" onclick="delStaff('${s.id}')" style="padding: 8px 16px;">
+                                        🗑️ Delete
+                                    </button>
+                                </div>
                             </div>
-                            <div class="action-buttons">
-                                <button class="btn-warning" onclick="openEditModal('${s.id}')" style="padding: 8px 16px;">
-                                    ✏️ Edit
-                                </button>
-                                <button class="btn-danger" onclick="delStaff('${s.id}')" style="padding: 8px 16px;">
-                                    🗑️ Delete
-                                </button>
-                            </div>
-                        </div>
-                    `).join('')
+                        `;
+                    }).join('')
                 }
             `;
         }
@@ -2002,6 +2114,31 @@
                 <h2>⚙️ Settings</h2>
                 
                 <div style="background: white; padding: 25px; border-radius: 8px; border: 1px solid #e0e0e0; margin-bottom: 25px;">
+                    <h3 style="margin-bottom: 15px; color: #2196F3;">⏰ Payroll Settings</h3>
+                    
+                    <div class="info-box">
+                        <strong>💡 Full Shift Hours:</strong>
+                        <small>
+                            Employees who work this many hours or more will be paid the full daily rate.<br>
+                            Employees who work less will be paid per hour (Daily Rate ÷ 12).
+                        </small>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 15px;">
+                        <label>Full Shift Hours (Default: 9.5)</label>
+                        <input type="number" id="full-shift-hours" step="0.5" min="1" max="24" 
+                               value="${app.settings.fullShiftHours}" 
+                               placeholder="e.g., 9.5">
+                        <small style="color: #666; margin-top: 5px; display: block;">
+                            Current: ${app.settings.fullShiftHours} hours = Full day
+                        </small>
+                    </div>
+
+                    <button class="btn-primary" onclick="savePayrollSettings()">💾 Save Payroll Settings</button>
+                    <div id="payroll-msg" class="msg" style="display: none; margin-top: 15px;"></div>
+                </div>
+                
+                <div style="background: white; padding: 25px; border-radius: 8px; border: 1px solid #e0e0e0; margin-bottom: 25px;">
                     <h3 style="margin-bottom: 15px; color: #2196F3;">📱 Device Settings</h3>
                     
                     <div class="info-box">
@@ -2101,6 +2238,18 @@
             `;
         }
 
+        function savePayrollSettings() {
+            const fullShiftHours = parseFloat(document.getElementById('full-shift-hours').value);
+            
+            if (!fullShiftHours || fullShiftHours < 1 || fullShiftHours > 24) {
+                return msg('payroll-msg', '❌ Please enter a valid number of hours (1-24)', 'err');
+            }
+            
+            app.settings.fullShiftHours = fullShiftHours;
+            saveData();
+            msg('payroll-msg', `✅ Full shift hours set to ${fullShiftHours} hours`, 'ok');
+        }
+
         function saveDeviceName() {
             const deviceName = document.getElementById('device-name').value.trim();
             if (!deviceName) {
@@ -2192,7 +2341,7 @@
                     },
                     body: JSON.stringify({
                         chat_id: chatId,
-                        text: '🧪 <b>Test Notification</b>\\n\\nThis is a test message from Sir Ramos Drugstore System.\\n\\n✅ Your Telegram notifications are working correctly!',
+                        text: '🧪 <b>Test Notification</b>\n\nThis is a test message from Sir Ramos Drugstore System.\n\n✅ Your Telegram notifications are working correctly!',
                         parse_mode: 'HTML'
                     })
                 });
@@ -2522,25 +2671,31 @@
 
         function expPay() {
             if (!app.start || !app.end) return msg('exp-msg', 'Set dates', 'err');
-            const rows = [['Staff','Days','OT Hours','Regular Pay','OT Pay','Gross','Deductions','Net']];
+            const rows = [['Staff','Full Days','Undertime Days','Undertime Hrs','OT Hours','Regular Pay','Undertime Pay','OT Pay','Gross','Deductions','Net']];
             app.staff.forEach(s => {
                 const recs = app.records.filter(r => {
                     const rd = new Date(r.date);
                     return r.sid === s.id && rd >= new Date(app.start) && rd <= new Date(app.end);
                 });
-                let wd=0;
-                let otHours=0;
+                let fullDays=0, undertimeDays=0, undertimeHours=0, otHours=0;
                 recs.forEach(r => {
                     if (!r.status) {
                         const h = calcH(r.in, r.out);
-                        if (h >= 9.5) wd++;
-                        otHours += calcOT(r.out);
+                        if (h >= app.settings.fullShiftHours) {
+                            fullDays++;
+                            otHours += calcOT(r.out);
+                        } else if (h > 0) {
+                            undertimeDays++;
+                            undertimeHours += h;
+                        }
                     }
                 });
                 const rt = RATES[s.position];
-                const regularPay = roundUp(wd * rt.daily);
+                const hourlyRate = getHourlyRate(s.position);
+                const regularPay = roundUp(fullDays * rt.daily);
+                const undertimePay = roundUp(undertimeHours * hourlyRate);
                 const otPay = roundUp(otHours * rt.ot);
-                const gross = regularPay + otPay;
+                const gross = regularPay + undertimePay + otPay;
                 
                 // Calculate deductions for this period
                 const deductionsInPeriod = app.deductions.filter(d => {
@@ -2554,7 +2709,7 @@
                 const totalDeductions = roundUp(deductionsInPeriod.reduce((sum, d) => sum + d.amount, 0));
                 const net = gross - totalDeductions;
                 
-                rows.push([s.name, wd, otHours, regularPay, otPay, gross, totalDeductions, net]);
+                rows.push([s.name, fullDays, undertimeDays, undertimeHours.toFixed(2), otHours, regularPay, undertimePay, otPay, gross, totalDeductions, net]);
             });
             dl('\uFEFF' + rows.map(r => r.join(',')).join('\n'), 'Payslip.csv', 'text/csv;charset=utf-8');
             msg('exp-msg', 'Downloaded!', 'ok');
