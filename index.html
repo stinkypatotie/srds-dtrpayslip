@@ -649,59 +649,62 @@
 
         // Clock View
         function renderClock() {
-
-        return`
-        
-        const today = new Date().toISOString().split('T')[0];
+    const today = new Date().toISOString().split('T')[0];
     const todayRecs = app.records.filter(r => r.date === today);
     
     return `
+        <div style="background: #fff3cd; padding: 15px; border-radius: 4px; margin-bottom: 20px; border-left: 4px solid #FF9800; font-size: 12px;">
+            <strong>DEBUG INFO:</strong><br>
+            Current Date: ${today}<br>
+            Total Records: ${app.records.length}<br>
+            Today Records Found: ${todayRecs.length}
+        </div>
         
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                    <h2 style="margin: 0;">🕐 Clock In/Out</h2>
-                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                        ${!authorizedDevices.some(d => d.id === deviceId) ? `
-                            <button class="btn-warning" onclick="quickAuthDevice()" style="padding: 8px 16px;">
-                                🔓 Authorize Device
-                            </button>
-                        ` : ''}
-                        ${!app.adminMode ? `
-                            <button class="btn-info" onclick="showAdminLogin()" style="padding: 8px 16px;">
-                                🔐 Admin Mode
-                            </button>
-                        ` : `
-                            <button class="btn-danger" onclick="exitAdminMode()" style="padding: 8px 16px;">
-                                🚪 Exit Admin Mode
-                            </button>
-                        `}
-                    </div>
-                </div>
-                <div class="status" id="current-datetime">
-                    <strong>📅 ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</strong><br>
-                    🕐 ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                </div>
-                <div class="form-grid">
-                    <div class="form-group">
-                        <label>Select Staff</label>
-                        <select id="staff-sel">
-                            <option value="">Choose staff...</option>
-                            ${app.staff.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Enter PIN</label>
-                        <input type="password" id="pin-inp" placeholder="4-digit PIN" maxlength="4">
-                    </div>
-                </div>
-                <div style="display: flex; gap: 10px; margin-bottom: 15px;">
-                    <button class="btn-primary" onclick="clockIn()">⏰ Clock In</button>
-                    <button class="btn-warning" onclick="clockOut()">🏁 Clock Out</button>
-                </div>
-                <div id="clock-msg" class="msg" style="display: none;"></div>
-                ${renderTodayRecords()}
-            `;
-        }
+            <h2 style="margin: 0;">🕐 Clock In/Out</h2>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                ${!authorizedDevices.some(d => d.id === deviceId) ? `
+                    <button class="btn-warning" onclick="quickAuthDevice()" style="padding: 8px 16px;">
+                        🔓 Authorize Device
+                    </button>
+                ` : ''}
+                ${!app.adminMode ? `
+                    <button class="btn-info" onclick="showAdminLogin()" style="padding: 8px 16px;">
+                        🔐 Admin Mode
+                    </button>
+                ` : `
+                    <button class="btn-danger" onclick="exitAdminMode()" style="padding: 8px 16px;">
+                        🚪 Exit Admin Mode
+                    </button>
+                `}
+            </div>
+        </div>
+        <div class="status" id="current-datetime">
+            <strong>📅 ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</strong><br>
+            🕐 ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+        </div>
+        <div class="form-grid">
+            <div class="form-group">
+                <label>Select Staff</label>
+                <select id="staff-sel">
+                    <option value="">Choose staff...</option>
+                    ${app.staff.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Enter PIN</label>
+                <input type="password" id="pin-inp" placeholder="4-digit PIN" maxlength="4">
+            </div>
+        </div>
+        <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+            <button class="btn-primary" onclick="clockIn()">⏰ Clock In</button>
+            <button class="btn-warning" onclick="clockOut()">🏁 Clock Out</button>
+        </div>
+        <div id="clock-msg" class="msg" style="display: none;"></div>
+        ${renderTodayRecords()}
+    `;
+}
+
 
         function renderTodayRecords() {
             const today = new Date().toISOString().split('T')[0];
