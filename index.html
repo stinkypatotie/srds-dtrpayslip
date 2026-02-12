@@ -317,7 +317,7 @@
             records: [],
             deductions: [], // NEW: Store cash advances/deductions
             settings: {
-                adminPassword: '0625Seb1@', // Global admin password
+                adminPassword: 'admin123', // DEFAULT admin password (can be changed in Settings)
                 fullShiftHours: 9.5, // NEW: Define what constitutes a full shift (can be changed in settings)
                 telegram: {
                     enabled: false,
@@ -805,17 +805,92 @@
                 app.records.push({ sid: sid, date: today, in: time, out: null, status: null });
             }
             
+            // Check for late login (after 7:35 AM) and auto-deduct
+            const loginTime = new Date(`2000-01-01 ${time}`);
+            const cutoffTime = new Date('2000-01-01 07:35:00');
+            
+            console.log('=== LATE LOGIN CHECK ===');
+            console.log('Login time string:', time);
+            console.log('Login time object:', loginTime);
+            console.log('Cutoff time:', cutoffTime);
+            console.log('Is late?:', loginTime > cutoffTime);
+            
+            let lateMessage = '';
+            if (loginTime > cutoffTime) {
+                console.log('LATE DETECTED!');
+                
+                // Check if late deduction already exists for this staff on this date
+                const existingLateDeduction = app.deductions.find(d => 
+                    d.staffId === sid && 
+                    d.deductionDate === today && 
+                    d.type === 'late'
+                );
+                
+                console.log('Existing late deduction for today:', existingLateDeduction);
+                
+                if (!existingLateDeduction) {
+                    console.log('Creating new late deduction...');
+                    
+                    // Calculate late minutes
+                    const lateMinutes = Math.floor((loginTime - cutoffTime) / (1000 * 60));
+                    console.log('Late by minutes:', lateMinutes);
+                    
+                    // Calculate deduction: hourly rate / 60 * late minutes
+                    const hourlyRate = getHourlyRate(s.position);
+                    console.log('Hourly rate:', hourlyRate);
+                    
+                    const lateDeduction = roundUp((hourlyRate / 60) * lateMinutes);
+                    console.log('Late deduction amount:', lateDeduction);
+                    
+                    // Add deduction record
+                    const deduction = {
+                        id: 'deduct-' + Date.now(),
+                        staffId: sid,
+                        amount: lateDeduction,
+                        reason: `Late Login: ${lateMinutes} minute(s) late (logged in at ${time})`,
+                        deductionDate: today,
+                        createdDate: new Date().toISOString(),
+                        status: 'pending',
+                        type: 'late' // Mark as late deduction for tracking
+                    };
+                    
+                    console.log('Deduction object created:', deduction);
+                    app.deductions.push(deduction);
+                    console.log('Deduction added to array. Total deductions:', app.deductions.length);
+                    
+                    lateMessage = ` ⚠️ Late by ${lateMinutes} min - Deduction: ₱${lateDeduction.toFixed(2)}`;
+                } else {
+                    console.log('Late deduction already exists for today');
+                    // Already has late deduction for today
+                    lateMessage = ` ⚠️ Late (deduction already recorded)`;
+                }
+            } else {
+                console.log('Not late - on time!');
+            }
+            console.log('=== END LATE LOGIN CHECK ===');
+            
             saveData();
-            msg('clock-msg', `✅ ${s.name} clocked in at ${time}`, 'ok');
+            msg('clock-msg', `✅ ${s.name} clocked in at ${time}${lateMessage}`, lateMessage ? 'err' : 'ok');
             
             // Send Telegram notification with device info
             if (app.settings.telegram.enabled && app.settings.telegram.notifications.clockIn) {
                 const deviceName = localStorage.getItem('deviceName') || 'Unknown Device';
-                const notifMessage = `🟢 <b>Time-In</b>\n\n` +
+                let notifMessage = `🟢 <b>Time-In</b>\n\n` +
                     `<b>Name:</b> ${s.name}\n` +
                     `<b>Date:</b> ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}\n` +
-                    `<b>Time:</b> ${time}\n` +
-                    `<b>Device:</b> ${deviceName}`;
+                    `<b>Time:</b> ${time}\n`;
+                
+                if (lateMessage) {
+                    const loginTime = new Date(`2000-01-01 ${time}`);
+                    const cutoffTime = new Date('2000-01-01 07:35:00');
+                    const lateMinutes = Math.floor((loginTime - cutoffTime) / (1000 * 60));
+                    const hourlyRate = getHourlyRate(s.position);
+                    const lateDeduction = roundUp((hourlyRate / 60) * lateMinutes);
+                    notifMessage += `<b>⚠️ Status:</b> LATE (${lateMinutes} minutes)\n` +
+                        `<b>💸 Late Deduction:</b> ₱${lateDeduction.toFixed(2)}\n`;
+                }
+                
+                notifMessage += `<b>Device:</b> ${deviceName}`;
                 sendTelegramNotification(notifMessage);
             }
             
@@ -1198,13 +1273,38 @@
 
         // Admin Mode Functions
         function showAdminLogin() {
-            const password = prompt('Enter admin password:');
+            // Show the modal with password input
+            document.getElementById('auth-modal').style.display = 'flex';
+            document.getElementById('auth-error').textContent = '';
+            // Focus on password input after a brief delay
+            setTimeout(() => {
+                const passwordInput = document.getElementById('admin-password');
+                if (passwordInput) {
+                    passwordInput.value = '';
+                    passwordInput.focus();
+                }
+            }, 100);
+        }
+
+        function closeAuthModal() {
+            document.getElementById('auth-modal').style.display = 'none';
+            document.getElementById('admin-password').value = '';
+            document.getElementById('auth-error').textContent = '';
+        }
+
+        function verifyPassword() {
+            const password = document.getElementById('admin-password').value;
+            const errorEl = document.getElementById('auth-error');
+            
             if (password === app.settings.adminPassword) {
                 app.adminMode = true;
+                closeAuthModal();
                 render();
                 alert('✅ Admin mode activated');
-            } else if (password !== null) {
-                alert('❌ Incorrect password');
+            } else if (password) {
+                errorEl.textContent = '❌ Incorrect password. Please try again.';
+            } else {
+                errorEl.textContent = '⚠️ Please enter a password.';
             }
         }
 
@@ -1242,6 +1342,15 @@
                     </small>
                 </div>
                 
+                <div class="info-box" style="background: #fff9e6; border-left-color: #FF9800;">
+                    <strong>⏰ Late Login Deductions:</strong>
+                    <small>
+                        Late logins (after 7:35 AM) are automatically deducted at per-minute rate.<br>
+                        <strong>Formula:</strong> Late Deduction = (Hourly Rate ÷ 60) × Minutes Late<br>
+                        <strong>Note:</strong> Make sure your date range includes the dates when late logins occurred.
+                    </small>
+                </div>
+                
                 <div class="form-grid">
                     <div class="form-group">
                         <label>Start Date</label>
@@ -1275,6 +1384,7 @@
             let fullDays = 0;
             let undertimeDays = 0;
             let undertimeHours = 0;
+            let partialDayHours = 0;
             let overtimeHours = 0;
             
             recs.forEach(r => {
@@ -1285,7 +1395,8 @@
                         overtimeHours += calcOT(r.out);
                     } else if (h > 0) {
                         undertimeDays++;
-                        undertimeHours += h;
+                        partialDayHours += h; // Actual hours worked
+                        undertimeHours += (app.settings.fullShiftHours - h); // Hours short
                     }
                 }
             });
@@ -1294,18 +1405,32 @@
             const hourlyRate = getHourlyRate(staff.position);
             
             const regularPay = roundUp(fullDays * rt.daily);
-            const undertimePay = roundUp(undertimeHours * hourlyRate);
+            const partialDayPay = roundUp(partialDayHours * hourlyRate);
+            const undertimeDeduction = roundUp(undertimeHours * hourlyRate);
             const overtimePay = roundUp(overtimeHours * rt.ot);
-            const gross = regularPay + undertimePay + overtimePay;
+            const gross = regularPay + partialDayPay + overtimePay;
 
             // Get deductions for this period
             const deductionsInPeriod = app.deductions.filter(d => {
                 const deductDate = new Date(d.deductionDate);
+                const periodStart = new Date(app.start);
+                const periodEnd = new Date(app.end);
+                
+                // Debug logging
+                console.log('Checking deduction:', d);
+                console.log('Deduction date:', deductDate);
+                console.log('Period:', periodStart, 'to', periodEnd);
+                console.log('Staff match:', d.staffId === staffId);
+                console.log('Date in range:', deductDate >= periodStart && deductDate <= periodEnd);
+                console.log('Status pending:', d.status === 'pending');
+                
                 return d.staffId === staffId && 
-                       deductDate >= new Date(app.start) && 
-                       deductDate <= new Date(app.end) &&
+                       deductDate >= periodStart && 
+                       deductDate <= periodEnd &&
                        d.status === 'pending';
             });
+            
+            console.log('Deductions in period:', deductionsInPeriod);
 
             const totalDeductions = roundUp(deductionsInPeriod.reduce((sum, d) => sum + d.amount, 0));
             const net = gross - totalDeductions;
@@ -1398,7 +1523,7 @@
                             <h1>SIR RAMOS DRUGSTORE</h1>
                             <h2>PAYSLIP</h2>
                             <p style="margin-top: 10px; color: #666;">
-                                ${new Date(app.start).toLocaleDateString()} - ${new Date(app.end).toLocaleDateString()}
+                                
                             </p>
                         </div>
 
@@ -1406,6 +1531,10 @@
                             <tr>
                                 <th>Employee Name</th>
                                 <td colspan="2">${staff.name}</td>
+                            </tr>
+                            <tr>
+                                <th>Pay period</th>
+                                <td colspan="2">${new Date(app.start).toLocaleDateString()} - ${new Date(app.end).toLocaleDateString()}</td>
                             </tr>
                             ${fullDays > 0 ? `
                             <tr>
@@ -1420,17 +1549,17 @@
                             ${undertimeDays > 0 ? `
                             <tr class="undertime-row">
                                 <th>⚠️ Undertime Days</th>
-                                <td colspan="2">${undertimeDays} days (${undertimeHours.toFixed(2)} hours total)</td>
+                                <td colspan="2">${undertimeDays} days</td>
                             </tr>
                             <tr class="undertime-row">
-                                <th>Hourly Rate</th>
-                                <td colspan="2">₱${hourlyRate.toFixed(2)}/hour</td>
+                                <th>Hours Worked (Undertime Days)</th>
+                                <td colspan="2">${partialDayHours.toFixed(2)} hours @ ₱${hourlyRate.toFixed(2)}/hr</td>
                             </tr>
                             <tr class="undertime-row">
-                                <th>Undertime Pay</th>
-                                <td colspan="2">₱${undertimePay}</td>
+                                <th>Partial Day Pay</th>
+                                <td colspan="2">₱${partialDayPay}</td>
                             </tr>
-                            ` : ''}
+								` : ''}
                             ${overtimeHours > 0 ? `
                             <tr>
                                 <th># of Overtime x OT Rate</th>
@@ -1448,10 +1577,14 @@
                             ${totalDeductions > 0 ? `
                             <tr>
                                 <th>Deductions</th>
+                                <td colspan="2"></td>
                             </tr>
                             ${deductionsInPeriod.map(d => `
-                            <tr>
-                                <th style="padding-left: 30px; font-weight: normal; background: #29a1bb;">• ${d.reason || 'Cash Advance'}</th>
+                            <tr style="${d.type === 'late' ? 'background: #fff9e6;' : ''}">
+                                <th style="padding-left: 30px; font-weight: normal; background: ${d.type === 'late' ? '#fff9e6' : '#29a1bb'};">
+                                    ${d.type === 'late' ? '<br>⏰<small style="font-size: 10px; color: #666;">' : '• '}${d.reason || 'Cash Advance'}
+                                    ${d.type === 'late' ? '<br><small style="font-size: 10px; color: #666;">' + new Date(d.deductionDate).toLocaleDateString() + '</small>' : ''}
+                                </th>
                                 <td colspan="2" style="color: #f44336;">-₱${roundUp(d.amount)}</td>
                             </tr>
                             `).join('')}
@@ -1508,6 +1641,7 @@
                 let fullDays = 0;
                 let undertimeDays = 0;
                 let undertimeHours = 0;
+                let partialDayHours = 0; // Track hours worked on undertime days
                 let overtimeHours = 0;
                 
                 recs.forEach(r => {
@@ -1518,7 +1652,8 @@
                             overtimeHours += calcOT(r.out);
                         } else if (h > 0) {
                             undertimeDays++;
-                            undertimeHours += h;
+                            partialDayHours += h; // Actual hours worked
+                            undertimeHours += (app.settings.fullShiftHours - h); // Hours short
                         }
                     }
                 });
@@ -1527,9 +1662,10 @@
                 const hourlyRate = getHourlyRate(s.position);
                 
                 const regularPay = roundUp(fullDays * rt.daily);
-                const undertimePay = roundUp(undertimeHours * hourlyRate);
+                const partialDayPay = roundUp(partialDayHours * hourlyRate); // Pay for actual hours worked
+                const undertimeDeduction = roundUp(undertimeHours * hourlyRate); // Deduction for missing hours
                 const overtimePay = roundUp(overtimeHours * rt.ot);
-                const gross = regularPay + undertimePay + overtimePay;
+                const gross = regularPay + partialDayPay + overtimePay;
                 
                 // Calculate total deductions for this period
                 const deductionsInPeriod = app.deductions.filter(d => {
@@ -1548,9 +1684,11 @@
                     fullDays, 
                     undertimeDays, 
                     undertimeHours, 
+                    partialDayHours,
+                    partialDayPay,
+                    undertimeDeduction,
                     overtimeHours, 
                     regularPay, 
-                    undertimePay, 
                     overtimePay, 
                     gross, 
                     totalDeductions, 
@@ -1571,7 +1709,7 @@
                                 <th>Undertime</th>
                                 <th>OT Hrs</th>
                                 <th>Regular Pay</th>
-                                <th>Undertime Pay</th>
+                                <th>Partial Day Pay</th>
                                 <th>OT Pay</th>
                                 <th>Gross Pay</th>
                                 <th>Deductions</th>
@@ -1588,19 +1726,23 @@
                                     <td>
                                         ${p.undertimeDays > 0 ? `
                                             <strong style="color: #FF9800;">${p.undertimeDays}</strong> days<br>
-                                            <small>(${p.undertimeHours.toFixed(1)} hrs @ ₱${p.hourlyRate.toFixed(2)}/hr)</small>
+                                            <small style="color: #d32f2f;">(-${p.undertimeHours.toFixed(1)} hrs short)</small>
                                         ` : '-'}
                                     </td>
                                     <td>${p.overtimeHours || '-'}</td>
                                     <td>₱${p.regularPay}</td>
-                                    <td ${p.undertimePay > 0 ? 'style="background: #fff3e0;"' : ''}>
-                                        ${p.undertimePay > 0 ? '₱' + p.undertimePay : '-'}
+                                    <td ${p.partialDayPay > 0 ? 'style="background: #fff3e0;"' : ''}>
+                                        ${p.partialDayPay > 0 ? '₱' + p.partialDayPay + '<br><small>(' + p.partialDayHours.toFixed(1) + ' hrs worked)</small>' : '-'}
                                     </td>
                                     <td>${p.overtimeHours > 0 ? '₱' + p.overtimePay : '-'}</td>
                                     <td><strong>₱${p.gross}</strong></td>
                                     <td style="color: ${p.totalDeductions > 0 ? '#f44336' : '#666'};">
                                         ${p.totalDeductions > 0 ? '-₱' + p.totalDeductions : '₱0'}
-                                        ${p.deductionsInPeriod.length > 0 ? `<br><small style="color: #666;">(${p.deductionsInPeriod.length} deduction${p.deductionsInPeriod.length > 1 ? 's' : ''})</small>` : ''}
+                                        ${p.deductionsInPeriod.length > 0 ? `<br><small style="color: #666;">
+                                            (${p.deductionsInPeriod.length} deduction${p.deductionsInPeriod.length > 1 ? 's' : ''}
+                                            ${p.deductionsInPeriod.filter(d => d.type === 'late').length > 0 ? 
+                                                ` - ${p.deductionsInPeriod.filter(d => d.type === 'late').length} late` : ''})
+                                        </small>` : ''}
                                     </td>
                                     <td><strong>₱${p.net}</strong></td>
                                     <td>
@@ -1636,6 +1778,25 @@
                 <div style="background: #e3f2fd; padding: 15px; border-radius: 4px; margin-bottom: 20px; border-left: 4px solid #2196F3;">
                     <strong>ℹ️ How it works:</strong><br>
                     <small>Record cash advances given to employees. Set a deduction date, and the amount will be automatically deducted from their salary on that date's payroll period.</small>
+                </div>
+                
+                <div style="background: #fff9e6; padding: 20px; border-radius: 6px; margin-bottom: 20px; border-left: 4px solid #FF9800;">
+                    <h3 style="margin-bottom: 10px; color: #E65100;">⏰ Scan for Late Logins</h3>
+                    <p style="color: #666; margin-bottom: 15px; font-size: 14px;">
+                        Scan existing attendance records and automatically create deductions for late logins (after 7:35 AM).
+                    </p>
+                    <div class="form-grid" style="margin-bottom: 15px;">
+                        <div class="form-group">
+                            <label>From Date</label>
+                            <input type="date" id="scan-start" value="${app.start || new Date().toISOString().split('T')[0]}">
+                        </div>
+                        <div class="form-group">
+                            <label>To Date</label>
+                            <input type="date" id="scan-end" value="${app.end || new Date().toISOString().split('T')[0]}">
+                        </div>
+                    </div>
+                    <button class="btn-warning" onclick="scanForLateLogins()" style="margin-right: 10px;">🔍 Scan & Create Late Deductions</button>
+                    <div id="scan-msg" class="msg" style="display: none; margin-top: 15px;"></div>
                 </div>
 
                 <div style="background: white; padding: 20px; border-radius: 6px; border: 1px solid #e0e0e0; margin-bottom: 20px;">
@@ -1676,8 +1837,44 @@
 
             const pending = app.deductions.filter(d => d.status === 'pending');
             const applied = app.deductions.filter(d => d.status === 'applied');
+            
+            // Get late login deductions summary
+            const lateDeductions = app.deductions.filter(d => d.type === 'late' && d.status === 'pending');
+            const lateDeductionsByStaff = {};
+            
+            lateDeductions.forEach(d => {
+                if (!lateDeductionsByStaff[d.staffId]) {
+                    lateDeductionsByStaff[d.staffId] = {
+                        count: 0,
+                        totalAmount: 0,
+                        staff: app.staff.find(s => s.id === d.staffId)
+                    };
+                }
+                lateDeductionsByStaff[d.staffId].count++;
+                lateDeductionsByStaff[d.staffId].totalAmount += d.amount;
+            });
 
             return `
+                ${Object.keys(lateDeductionsByStaff).length > 0 ? `
+                    <div style="background: #fff3e0; padding: 20px; border-radius: 8px; margin-bottom: 30px; border-left: 4px solid #FF9800;">
+                        <h3 style="margin-bottom: 15px; color: #E65100;">⏰ Late Login Deductions Summary</h3>
+                        <div style="display: grid; gap: 10px;">
+                            ${Object.values(lateDeductionsByStaff).map(item => `
+                                <div style="background: white; padding: 12px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center;">
+                                    <div>
+                                        <strong>${item.staff ? item.staff.name : 'Unknown'}</strong><br>
+                                        <small style="color: #666;">${item.count} late login${item.count > 1 ? 's' : ''}</small>
+                                    </div>
+                                    <div style="text-align: right;">
+                                        <strong style="color: #f44336; font-size: 16px;">₱${item.totalAmount.toFixed(2)}</strong><br>
+                                        <small style="color: #666;">total deduction</small>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                ` : ''}
+                
                 ${pending.length > 0 ? `
                     <div style="margin-bottom: 30px;">
                         <h3 style="margin-bottom: 15px; color: #FF9800;">⏳ Pending Deductions</h3>
@@ -1696,8 +1893,9 @@
                                 ${pending.map(d => {
                                     const staff = app.staff.find(s => s.id === d.staffId);
                                     const isPast = new Date(d.deductionDate) < new Date();
+                                    const isLate = d.type === 'late';
                                     return `
-                                        <tr class="deduction-item">
+                                        <tr class="deduction-item" style="${isLate ? 'background: #fff9e6;' : ''}">
                                             <td>${new Date(d.createdDate).toLocaleDateString()}</td>
                                             <td>${staff ? staff.name : 'Unknown'}</td>
                                             <td><strong style="color: #f44336;">₱${d.amount.toFixed(2)}</strong></td>
@@ -1705,7 +1903,7 @@
                                                 ${new Date(d.deductionDate).toLocaleDateString()}
                                                 ${isPast ? '<br><small style="color: #f44336;">⚠️ Past due</small>' : ''}
                                             </td>
-                                            <td>${d.reason || '-'}</td>
+                                            <td>${isLate ? '⏰ ' : ''}${d.reason || '-'}</td>
                                             <td>
                                                 <div class="action-buttons">
                                                     <button class="btn-warning" onclick="markDeductionApplied('${d.id}')" style="padding: 6px 12px; font-size: 12px;">
@@ -1816,6 +2014,98 @@
             setTimeout(() => {
                 render();
             }, 1500);
+        }
+
+        function scanForLateLogins() {
+            const startDate = document.getElementById('scan-start').value;
+            const endDate = document.getElementById('scan-end').value;
+            
+            if (!startDate || !endDate) {
+                return msg('scan-msg', '❌ Please select both start and end dates', 'err');
+            }
+            
+            const start = new Date(startDate);
+            const end = new Date(endDate);
+            
+            if (start > end) {
+                return msg('scan-msg', '❌ Start date must be before end date', 'err');
+            }
+            
+            let lateLoginsFound = 0;
+            let deductionsCreated = 0;
+            
+            // Get all records in the date range
+            const recordsInRange = app.records.filter(r => {
+                const recordDate = new Date(r.date);
+                return recordDate >= start && recordDate <= end && r.in;
+            });
+            
+            console.log('=== SCANNING FOR LATE LOGINS ===');
+            console.log('Records in range:', recordsInRange.length);
+            
+            recordsInRange.forEach(record => {
+                if (!record.in) return; // Skip if no login time
+                
+                // Parse login time
+                const loginTime = new Date(`2000-01-01 ${record.in}`);
+                const cutoffTime = new Date('2000-01-01 07:35:00');
+                
+                console.log('Checking record:', record.date, record.in);
+                console.log('Login time:', loginTime, 'Cutoff:', cutoffTime, 'Late?:', loginTime > cutoffTime);
+                
+                if (loginTime > cutoffTime) {
+                    lateLoginsFound++;
+                    
+                    // Check if deduction already exists
+                    const existingDeduction = app.deductions.find(d => 
+                        d.staffId === record.sid && 
+                        d.deductionDate === record.date && 
+                        d.type === 'late'
+                    );
+                    
+                    if (!existingDeduction) {
+                        // Create late deduction
+                        const staff = app.staff.find(s => s.id === record.sid);
+                        if (!staff) return;
+                        
+                        const lateMinutes = Math.floor((loginTime - cutoffTime) / (1000 * 60));
+                        const hourlyRate = getHourlyRate(staff.position);
+                        const lateDeduction = roundUp((hourlyRate / 60) * lateMinutes);
+                        
+                        const deduction = {
+                            id: 'deduct-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
+                            staffId: record.sid,
+                            amount: lateDeduction,
+                            reason: `Late Login: ${lateMinutes} minute(s) late (logged in at ${record.in})`,
+                            deductionDate: record.date,
+                            createdDate: new Date().toISOString(),
+                            status: 'pending',
+                            type: 'late'
+                        };
+                        
+                        app.deductions.push(deduction);
+                        deductionsCreated++;
+                        
+                        console.log('Created late deduction:', deduction);
+                    } else {
+                        console.log('Deduction already exists for this late login');
+                    }
+                }
+            });
+            
+            console.log('=== SCAN COMPLETE ===');
+            console.log('Late logins found:', lateLoginsFound);
+            console.log('Deductions created:', deductionsCreated);
+            
+            if (deductionsCreated > 0) {
+                saveData();
+                msg('scan-msg', `✅ Found ${lateLoginsFound} late login(s). Created ${deductionsCreated} new deduction(s).`, 'ok');
+                setTimeout(() => render(), 1500);
+            } else if (lateLoginsFound > 0) {
+                msg('scan-msg', `ℹ️ Found ${lateLoginsFound} late login(s), but deductions already exist for all of them.`, 'ok');
+            } else {
+                msg('scan-msg', `ℹ️ No late logins found in the selected date range.`, 'ok');
+            }
         }
 
         function markDeductionApplied(deductionId) {
@@ -2122,6 +2412,37 @@
                 <h2>⚙️ Settings</h2>
                 
                 <div style="background: white; padding: 25px; border-radius: 8px; border: 1px solid #e0e0e0; margin-bottom: 25px;">
+                    <h3 style="margin-bottom: 15px; color: #f44336;">🔒 Security Settings</h3>
+                    
+                    <div class="info-box" style="background: #ffebee; border-left-color: #f44336;">
+                        <strong>⚠️ Admin Password:</strong>
+                        <small>
+                            Change your admin password to secure access to administrative functions.<br>
+                            <strong>Default Password:</strong> admin123 (change this immediately for security!)<br>
+                            <strong>Important:</strong> Password is stored securely in Firebase/localStorage. Remember your new password - it cannot be recovered!
+                        </small>
+                    </div>
+
+                    <div class="form-grid" style="margin-bottom: 15px;">
+                        <div class="form-group">
+                            <label>Current Password</label>
+                            <input type="password" id="current-password" placeholder="Enter current password">
+                        </div>
+                        <div class="form-group">
+                            <label>New Password</label>
+                            <input type="password" id="new-password" placeholder="Enter new password">
+                        </div>
+                        <div class="form-group">
+                            <label>Confirm New Password</label>
+                            <input type="password" id="confirm-password" placeholder="Re-enter new password">
+                        </div>
+                    </div>
+
+                    <button class="btn-danger" onclick="changeAdminPassword()">🔐 Change Admin Password</button>
+                    <div id="password-msg" class="msg" style="display: none; margin-top: 15px;"></div>
+                </div>
+                
+                <div style="background: white; padding: 25px; border-radius: 8px; border: 1px solid #e0e0e0; margin-bottom: 25px;">
                     <h3 style="margin-bottom: 15px; color: #2196F3;">⏰ Payroll Settings</h3>
                     
                     <div class="info-box">
@@ -2265,6 +2586,51 @@
             }
             localStorage.setItem('deviceName', deviceName);
             msg('device-msg', '✅ Device name saved', 'ok');
+        }
+
+        function changeAdminPassword() {
+            const currentPassword = document.getElementById('current-password').value;
+            const newPassword = document.getElementById('new-password').value;
+            const confirmPassword = document.getElementById('confirm-password').value;
+            
+            if (!currentPassword || !newPassword || !confirmPassword) {
+                return msg('password-msg', '❌ Please fill all password fields', 'err');
+            }
+            
+            // Verify current password
+            if (currentPassword !== app.settings.adminPassword) {
+                return msg('password-msg', '❌ Current password is incorrect', 'err');
+            }
+            
+            // Validate new password
+            if (newPassword.length < 6) {
+                return msg('password-msg', '❌ New password must be at least 6 characters', 'err');
+            }
+            
+            // Check if passwords match
+            if (newPassword !== confirmPassword) {
+                return msg('password-msg', '❌ New passwords do not match', 'err');
+            }
+            
+            // Update password
+            app.settings.adminPassword = newPassword;
+            saveData();
+            
+            // Clear input fields
+            document.getElementById('current-password').value = '';
+            document.getElementById('new-password').value = '';
+            document.getElementById('confirm-password').value = '';
+            
+            msg('password-msg', '✅ Admin password changed successfully!', 'ok');
+            
+            // Log the user out after password change
+            setTimeout(() => {
+                alert('Password changed! You will be logged out for security.');
+                app.adminMode = false;
+                app.view = 'clock';
+                render();
+                updateAdminStatus();
+            }, 2000);
         }
 
         function toggleTelegramNotifications(enabled) {
@@ -2679,13 +3045,13 @@
 
         function expPay() {
             if (!app.start || !app.end) return msg('exp-msg', 'Set dates', 'err');
-            const rows = [['Staff','Full Days','Undertime Days','Undertime Hrs','OT Hours','Regular Pay','Undertime Pay','OT Pay','Gross','Deductions','Net']];
+            const rows = [['Staff','Full Days','Undertime Days','Hours Worked','Hours Short','OT Hours','Regular Pay','Partial Day Pay','OT Pay','Gross','Deductions','Net']];
             app.staff.forEach(s => {
                 const recs = app.records.filter(r => {
                     const rd = new Date(r.date);
                     return r.sid === s.id && rd >= new Date(app.start) && rd <= new Date(app.end);
                 });
-                let fullDays=0, undertimeDays=0, undertimeHours=0, otHours=0;
+                let fullDays=0, undertimeDays=0, undertimeHours=0, partialDayHours=0, otHours=0;
                 recs.forEach(r => {
                     if (!r.status) {
                         const h = calcH(r.in, r.out);
@@ -2694,16 +3060,17 @@
                             otHours += calcOT(r.out);
                         } else if (h > 0) {
                             undertimeDays++;
-                            undertimeHours += h;
+                            partialDayHours += h;
+                            undertimeHours += (app.settings.fullShiftHours - h);
                         }
                     }
                 });
                 const rt = RATES[s.position];
                 const hourlyRate = getHourlyRate(s.position);
                 const regularPay = roundUp(fullDays * rt.daily);
-                const undertimePay = roundUp(undertimeHours * hourlyRate);
+                const partialDayPay = roundUp(partialDayHours * hourlyRate);
                 const otPay = roundUp(otHours * rt.ot);
-                const gross = regularPay + undertimePay + otPay;
+                const gross = regularPay + partialDayPay + otPay;
                 
                 // Calculate deductions for this period
                 const deductionsInPeriod = app.deductions.filter(d => {
@@ -2717,7 +3084,7 @@
                 const totalDeductions = roundUp(deductionsInPeriod.reduce((sum, d) => sum + d.amount, 0));
                 const net = gross - totalDeductions;
                 
-                rows.push([s.name, fullDays, undertimeDays, undertimeHours.toFixed(2), otHours, regularPay, undertimePay, otPay, gross, totalDeductions, net]);
+                rows.push([s.name, fullDays, undertimeDays, partialDayHours.toFixed(2), undertimeHours.toFixed(2), otHours, regularPay, partialDayPay, otPay, gross, totalDeductions, net]);
             });
             dl('\uFEFF' + rows.map(r => r.join(',')).join('\n'), 'Payslip.csv', 'text/csv;charset=utf-8');
             msg('exp-msg', 'Downloaded!', 'ok');
