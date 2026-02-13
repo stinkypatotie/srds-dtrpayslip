@@ -393,12 +393,11 @@
                             app.staff = data.staff || [];
                             app.records = data.records || [];
                             app.deductions = data.deductions || [];
-                            // Merge settings but keep adminPassword
+                            // Merge settings including adminPassword from saved data
                             if (data.settings) {
                                 app.settings = {
                                     ...app.settings,
                                     ...data.settings,
-                                    adminPassword: app.settings.adminPassword, // Always keep default password
                                     fullShiftHours: data.settings.fullShiftHours || 9.5 // Load full shift hours setting
                                 };
                             }
@@ -428,11 +427,10 @@
             app.deductions = JSON.parse(localStorage.getItem('deductions')) || [];
             const savedSettings = JSON.parse(localStorage.getItem('settings'));
             if (savedSettings) {
-                // Merge saved settings but keep adminPassword
+                // Merge saved settings including adminPassword
                 app.settings = {
                     ...app.settings,
                     ...savedSettings,
-                    adminPassword: app.settings.adminPassword, // Always keep default password
                     fullShiftHours: savedSettings.fullShiftHours || 9.5
                 };
             }
@@ -1559,7 +1557,11 @@
                                 <th>Partial Day Pay</th>
                                 <td colspan="2">₱${partialDayPay}</td>
                             </tr>
-								` : ''}
+                            <tr class="undertime-row">
+                                <th style="color: #d32f2f;">Hours Short</th>
+                                <td colspan="2" style="color: #d32f2f;">${undertimeHours.toFixed(2)} hours (${app.settings.fullShiftHours} hrs required)</td>
+                            </tr>
+                            ` : ''}
                             ${overtimeHours > 0 ? `
                             <tr>
                                 <th># of Overtime x OT Rate</th>
