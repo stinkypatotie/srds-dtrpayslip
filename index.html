@@ -833,7 +833,7 @@
                         app.records = data.records || [];
                         app.deductions = data.deductions || [];
                         if (data.settings) {
-                            app.settings = { ...app.settings, ...data.settings, fullShiftHours: data.settings.fullShiftHours || 9.5, clockOutChecklist: data.settings.clockOutChecklist || DEFAULT_CLOCKOUT_CHECKLIST, clockOutFarewell: data.settings.clockOutFarewell || DEFAULT_CLOCKOUT_FAREWELL };
+                            const tg2 = app.settings.telegram; const stg2 = data.settings.telegram || {}; app.settings = { ...app.settings, ...data.settings, fullShiftHours: data.settings.fullShiftHours || 9.5, clockOutChecklist: data.settings.clockOutChecklist || DEFAULT_CLOCKOUT_CHECKLIST, clockOutFarewell: data.settings.clockOutFarewell || DEFAULT_CLOCKOUT_FAREWELL, telegram: { ...tg2, ...stg2, sendPhoto: stg2.sendPhoto !== undefined ? stg2.sendPhoto : (tg2.sendPhoto !== undefined ? tg2.sendPhoto : true), notifications: { ...tg2.notifications, ...(stg2.notifications||{}) } } };
                         }
                     } else loadFromLocalStorage();
                     render();
@@ -846,7 +846,7 @@
             app.records = JSON.parse(localStorage.getItem('records')) || [];
             app.deductions = JSON.parse(localStorage.getItem('deductions')) || [];
             const s = JSON.parse(localStorage.getItem('settings'));
-            if (s) app.settings = { ...app.settings, ...s, fullShiftHours: s.fullShiftHours || 9.5, clockOutChecklist: s.clockOutChecklist || DEFAULT_CLOCKOUT_CHECKLIST, clockOutFarewell: s.clockOutFarewell || DEFAULT_CLOCKOUT_FAREWELL };
+            if (s) { const tg = app.settings.telegram; const stg = s.telegram || {}; app.settings = { ...app.settings, ...s, fullShiftHours: s.fullShiftHours || 9.5, clockOutChecklist: s.clockOutChecklist || DEFAULT_CLOCKOUT_CHECKLIST, clockOutFarewell: s.clockOutFarewell || DEFAULT_CLOCKOUT_FAREWELL, telegram: { ...tg, ...stg, sendPhoto: stg.sendPhoto !== undefined ? stg.sendPhoto : (tg.sendPhoto !== undefined ? tg.sendPhoto : true), notifications: { ...tg.notifications, ...(stg.notifications||{}) } } }; }
         }
 
         function loadAuthorizedDevices() {
@@ -1305,7 +1305,7 @@
             saveData();
             showMsg('clock-msg',`✅ ${s.name} clocked out at ${time} (${hours.toFixed(2)} hrs)`,'ok');
             document.getElementById('pin-inp').value='';
-            if (app.settings.telegram.enabled&&app.settings.telegram.notifications.clockOut) {
+            if (app.settings.telegram.enabled&&app.settings.telegram.notifications&&app.settings.telegram.notifications.clockOut) {
                 const dn=localStorage.getItem('deviceName')||'Unknown'; const isU=hours<app.settings.fullShiftHours;
                 sendTelegramNotification(`🔴 <b>Time-Out</b>\n\n<b>Name:</b> ${s.name}\n<b>Date:</b> ${new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}\n<b>Time:</b> ${time}\n<b>Hours:</b> ${hours.toFixed(2)}\n${isU?'<b>⚠️ Status:</b> Undertime\n':''}<b>Device:</b> ${dn}`);
             }
@@ -1313,12 +1313,12 @@
         }
 
         function sendTelegramClockin(s, time, lateMsg, photoData) {
-            if (!app.settings.telegram.enabled||!app.settings.telegram.notifications.clockIn) return;
+            if (!app.settings.telegram.enabled||!(app.settings.telegram.notifications&&app.settings.telegram.notifications.clockIn)) return;
             const dn=localStorage.getItem('deviceName')||'Unknown';
             let notif=`🟢 <b>Time-In</b>\n\n<b>Name:</b> ${s.name}\n<b>Date:</b> ${new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}\n<b>Time:</b> ${time}\n`;
             if (lateMsg) { const lt=new Date('2000-01-01 '+time),ct=new Date('2000-01-01 07:35:00'),lm=Math.floor((lt-ct)/60000); notif+=`<b>⚠️ Status:</b> LATE (${lm} min)\n<b>💸 Deduction:</b> ₱${roundUp((getHourlyRate(s.position)/60)*lm).toFixed(2)}\n`; }
             notif+=`<b>Device:</b> ${dn}`;
-            if (photoData && app.settings.telegram.sendPhoto) {
+            if (photoData && app.settings.telegram.sendPhoto !== false) {
                 sendTelegramPhoto(notif, photoData);
             } else {
                 sendTelegramNotification(notif);
@@ -1832,17 +1832,17 @@
                             <div style="font-size:13px;font-weight:600;color:var(--text-2);margin-bottom:8px;">Notification Types</div>
                             <div style="display:flex;flex-direction:column;gap:6px;">
                                 <label style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--surface-2);border-radius:var(--radius-sm);cursor:pointer;user-select:none;">
-                                    <input type="checkbox" id="notif-clockin" ${tg.notifications.clockIn?'checked':''}
+                                    <input type="checkbox" id="notif-clockin" ${(tg.notifications&&tg.notifications.clockIn)?'checked':''}
                                         style="width:20px;height:20px;flex-shrink:0;accent-color:var(--green);">
                                     <span style="font-size:14px;">🟢 Clock In notifications</span>
                                 </label>
                                 <label style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--surface-2);border-radius:var(--radius-sm);cursor:pointer;user-select:none;">
-                                    <input type="checkbox" id="notif-clockout" ${tg.notifications.clockOut?'checked':''}
+                                    <input type="checkbox" id="notif-clockout" ${(tg.notifications&&tg.notifications.clockOut)?'checked':''}
                                         style="width:20px;height:20px;flex-shrink:0;accent-color:var(--red);">
                                     <span style="font-size:14px;">🔴 Clock Out notifications</span>
                                 </label>
                                 <label style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--surface-2);border-radius:var(--radius-sm);cursor:pointer;user-select:none;">
-                                    <input type="checkbox" id="notif-deduction" ${tg.notifications.newDeduction?'checked':''}
+                                    <input type="checkbox" id="notif-deduction" ${(tg.notifications&&tg.notifications.newDeduction)?'checked':''}
                                         style="width:20px;height:20px;flex-shrink:0;accent-color:var(--amber);">
                                     <span style="font-size:14px;">💸 New Deduction notifications</span>
                                 </label>
@@ -1917,29 +1917,30 @@
 
         // ─── FIXED saveTelegramSettings ──────────────────────────
         function saveTelegramSettings() {
-            const enabledEl  = document.getElementById('telegram-enabled');
-            const tokenEl    = document.getElementById('telegram-token');
-            const chatIdEl   = document.getElementById('telegram-chatid');
-            const clockInEl  = document.getElementById('notif-clockin');
-            const clockOutEl = document.getElementById('notif-clockout');
-            const deductEl   = document.getElementById('notif-deduction');
-            const sendPhotoEl= document.getElementById('notif-sendphoto');
+            const enabledEl   = document.getElementById('telegram-enabled');
+            const tokenEl     = document.getElementById('telegram-token');
+            const chatIdEl    = document.getElementById('telegram-chatid');
+            const clockInEl   = document.getElementById('notif-clockin');
+            const clockOutEl  = document.getElementById('notif-clockout');
+            const deductEl    = document.getElementById('notif-deduction');
+            const sendPhotoEl = document.getElementById('notif-sendphoto');
 
-            const en = enabledEl  ? enabledEl.checked  : false;
+            const en = enabledEl  ? enabledEl.checked     : false;
             const bt = tokenEl    ? tokenEl.value.trim()  : '';
             const ci = chatIdEl   ? chatIdEl.value.trim() : '';
 
             if (en && (!bt || !ci)) return showMsg('telegram-msg','❌ Enter Bot Token and Chat ID','err');
 
+            const notifs = app.settings.telegram.notifications || {};
             app.settings.telegram = {
                 enabled: en,
                 botToken: bt,
                 chatId: ci,
-                sendPhoto: sendPhotoEl ? sendPhotoEl.checked : true,
+                sendPhoto: sendPhotoEl ? sendPhotoEl.checked : (app.settings.telegram.sendPhoto !== false),
                 notifications: {
-                    clockIn:       clockInEl  ? clockInEl.checked  : app.settings.telegram.notifications.clockIn,
-                    clockOut:      clockOutEl ? clockOutEl.checked : app.settings.telegram.notifications.clockOut,
-                    newDeduction:  deductEl   ? deductEl.checked   : app.settings.telegram.notifications.newDeduction,
+                    clockIn:          clockInEl  ? clockInEl.checked  : notifs.clockIn,
+                    clockOut:         clockOutEl ? clockOutEl.checked : notifs.clockOut,
+                    newDeduction:     deductEl   ? deductEl.checked   : notifs.newDeduction,
                     payrollGenerated: false
                 }
             };
@@ -1954,7 +1955,7 @@
             try{await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chat_id:chatId,text:msg,parse_mode:'HTML'})});}catch(e){}
         }
         async function sendTelegramPhoto(caption, photoData) {
-            if(!app.settings.telegram.enabled||!app.settings.telegram.sendPhoto)return;
+            if(!app.settings.telegram.enabled||app.settings.telegram.sendPhoto===false)return;
             if(!photoData)return;
             const{botToken,chatId}=app.settings.telegram;if(!botToken||!chatId)return;
             try {
