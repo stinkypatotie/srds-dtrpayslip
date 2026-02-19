@@ -784,7 +784,7 @@
                 fullShiftHours: 9.5,
                 clockOutChecklist: DEFAULT_CLOCKOUT_CHECKLIST,
                 clockOutFarewell: DEFAULT_CLOCKOUT_FAREWELL,
-                telegram: { enabled: false, botToken: '', chatId: '', notifications: { clockIn: true, clockOut: true, newDeduction: true, payrollGenerated: false } }
+                telegram: { enabled: false, botToken: '', chatId: '', sendPhoto: true, notifications: { clockIn: true, clockOut: true, newDeduction: true, payrollGenerated: false } }
             },
             start: '', end: '', view: 'clock', editingRecord: null, adminMode: false
         };
@@ -1176,7 +1176,7 @@
                     </div>
                     <div id="clock-msg" class="msg" style="display:none;"></div>
                 </div>
-               ${!app.adminMode ? `<div style="text-align:center;margin-top:8px;"><button class="btn-muted btn-sm" onclick="showAdminLogin()">🔐 Admin Mode</button></div>` : `<div style="text-align:center;margin-top:8px;"><button class="btn-danger btn-sm" onclick="exitAdminMode()">🚪 Exit Admin Mode</button></div>`}
+				${!app.adminMode ? `<div style="text-align:center;margin-top:8px;"><button class="btn-muted btn-sm" onclick="showAdminLogin()">🔐 Admin Login</button></div>` : `<div style="text-align:center;margin-top:8px;"><button class="btn-danger btn-sm" onclick="exitAdminMode()">🚪 Exit Admin Mode</button></div>`}
                 ${renderTodayCards()}
             `;
         }
@@ -1185,7 +1185,7 @@
             const td = today(), recs = app.records.filter(r => r.date === td);
             if (recs.length === 0) return `<div style="text-align:center;padding:32px;color:var(--text-3);font-size:14px;">No activity yet today</div>`;
             return `
-                <div style="margin-top:20px;">
+                <div style="margin-top:20px; admin=true;">
                     <div style="font-size:14px;font-weight:700;color:var(--text-2);margin-bottom:10px;text-transform:uppercase;letter-spacing:.6px;">Today's Activity</div>
                     ${recs.map(r => {
                         const s = app.staff.find(x=>x.id===r.sid);
@@ -1247,7 +1247,7 @@
             saveData();
             showMsg('clock-msg',`✅ ${s.name} clocked in at ${time}${lateMsg}`, lateMsg?'err':'ok');
             document.getElementById('pin-inp').value='';
-            sendTelegramClockin(s, time, lateMsg);
+            sendTelegramClockin(s, time, lateMsg, photoData);
             render();
         }
 
@@ -1311,13 +1311,17 @@
             render();
         }
 
-        function sendTelegramClockin(s, time, lateMsg) {
+        function sendTelegramClockin(s, time, lateMsg, photoData) {
             if (!app.settings.telegram.enabled||!app.settings.telegram.notifications.clockIn) return;
             const dn=localStorage.getItem('deviceName')||'Unknown';
             let notif=`🟢 <b>Time-In</b>\n\n<b>Name:</b> ${s.name}\n<b>Date:</b> ${new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}\n<b>Time:</b> ${time}\n`;
             if (lateMsg) { const lt=new Date('2000-01-01 '+time),ct=new Date('2000-01-01 07:35:00'),lm=Math.floor((lt-ct)/60000); notif+=`<b>⚠️ Status:</b> LATE (${lm} min)\n<b>💸 Deduction:</b> ₱${roundUp((getHourlyRate(s.position)/60)*lm).toFixed(2)}\n`; }
             notif+=`<b>Device:</b> ${dn}`;
-            sendTelegramNotification(notif);
+            if (photoData && app.settings.telegram.sendPhoto) {
+                sendTelegramPhoto(notif, photoData);
+            } else {
+                sendTelegramNotification(notif);
+            }
         }
 
         // ═══════════════════════════════════════════════
@@ -1841,6 +1845,11 @@
                                         style="width:20px;height:20px;flex-shrink:0;accent-color:var(--amber);">
                                     <span style="font-size:14px;">💸 New Deduction notifications</span>
                                 </label>
+                                <label style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--surface-2);border-radius:var(--radius-sm);cursor:pointer;user-select:none;">
+                                    <input type="checkbox" id="notif-sendphoto" ${tg.sendPhoto!==false?'checked':''}
+                                        style="width:20px;height:20px;flex-shrink:0;accent-color:var(--purple);">
+                                    <span style="font-size:14px;">📷 Send clock-in photo with notification</span>
+                                </label>
                             </div>
                         </div>
 
@@ -1913,6 +1922,7 @@
             const clockInEl  = document.getElementById('notif-clockin');
             const clockOutEl = document.getElementById('notif-clockout');
             const deductEl   = document.getElementById('notif-deduction');
+            const sendPhotoEl= document.getElementById('notif-sendphoto');
 
             const en = enabledEl  ? enabledEl.checked  : false;
             const bt = tokenEl    ? tokenEl.value.trim()  : '';
@@ -1924,6 +1934,7 @@
                 enabled: en,
                 botToken: bt,
                 chatId: ci,
+                sendPhoto: sendPhotoEl ? sendPhotoEl.checked : true,
                 notifications: {
                     clockIn:       clockInEl  ? clockInEl.checked  : app.settings.telegram.notifications.clockIn,
                     clockOut:      clockOutEl ? clockOutEl.checked : app.settings.telegram.notifications.clockOut,
@@ -1940,6 +1951,21 @@
             if(!app.settings.telegram.enabled)return;
             const{botToken,chatId}=app.settings.telegram;if(!botToken||!chatId)return;
             try{await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chat_id:chatId,text:msg,parse_mode:'HTML'})});}catch(e){}
+        }
+        async function sendTelegramPhoto(caption, photoData) {
+            if(!app.settings.telegram.enabled||!app.settings.telegram.sendPhoto)return;
+            if(!photoData)return;
+            const{botToken,chatId}=app.settings.telegram;if(!botToken||!chatId)return;
+            try {
+                const res = await fetch(photoData);
+                const blob = await res.blob();
+                const fd = new FormData();
+                fd.append('chat_id', chatId);
+                fd.append('photo', blob, 'clockin.jpg');
+                fd.append('caption', caption);
+                fd.append('parse_mode', 'HTML');
+                await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {method:'POST', body:fd});
+            } catch(e) {}
         }
         async function testTelegramNotification() {
             const bt=document.getElementById('telegram-token').value.trim(), ci=document.getElementById('telegram-chatid').value.trim();
