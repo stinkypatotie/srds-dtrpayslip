@@ -784,7 +784,7 @@
                 fullShiftHours: 9.5,
                 clockOutChecklist: DEFAULT_CLOCKOUT_CHECKLIST,
                 clockOutFarewell: DEFAULT_CLOCKOUT_FAREWELL,
-                telegram: { enabled: false, botToken: '', chatId: '', sendPhoto: true, notifications: { clockIn: true, clockOut: true, newDeduction: true, payrollGenerated: false } }
+                telegram: { enabled: false, botToken: '', chatId: '', notifications: { clockIn: true, clockOut: true, newDeduction: true, payrollGenerated: false } }
             },
             start: '', end: '', view: 'clock', editingRecord: null, adminMode: false
         };
@@ -833,7 +833,16 @@
                         app.records = data.records || [];
                         app.deductions = data.deductions || [];
                         if (data.settings) {
-                            const tg2 = app.settings.telegram; const stg2 = data.settings.telegram || {}; app.settings = { ...app.settings, ...data.settings, fullShiftHours: data.settings.fullShiftHours || 9.5, clockOutChecklist: data.settings.clockOutChecklist || DEFAULT_CLOCKOUT_CHECKLIST, clockOutFarewell: data.settings.clockOutFarewell || DEFAULT_CLOCKOUT_FAREWELL, telegram: { ...tg2, ...stg2, sendPhoto: stg2.sendPhoto !== undefined ? stg2.sendPhoto : (tg2.sendPhoto !== undefined ? tg2.sendPhoto : true), notifications: { ...tg2.notifications, ...(stg2.notifications||{}) } } };
+                            const _tg2 = app.settings.telegram;
+                            const _stg2 = data.settings.telegram || {};
+                            app.settings = { ...app.settings, ...data.settings,
+                                fullShiftHours: data.settings.fullShiftHours || 9.5,
+                                clockOutChecklist: data.settings.clockOutChecklist || DEFAULT_CLOCKOUT_CHECKLIST,
+                                clockOutFarewell:  data.settings.clockOutFarewell  || DEFAULT_CLOCKOUT_FAREWELL,
+                                telegram: { ..._tg2, ..._stg2,
+                                    notifications: { ..._tg2.notifications, ...(_stg2.notifications || {}) }
+                                }
+                            };
                         }
                     } else loadFromLocalStorage();
                     render();
@@ -846,7 +855,18 @@
             app.records = JSON.parse(localStorage.getItem('records')) || [];
             app.deductions = JSON.parse(localStorage.getItem('deductions')) || [];
             const s = JSON.parse(localStorage.getItem('settings'));
-            if (s) { const tg = app.settings.telegram; const stg = s.telegram || {}; app.settings = { ...app.settings, ...s, fullShiftHours: s.fullShiftHours || 9.5, clockOutChecklist: s.clockOutChecklist || DEFAULT_CLOCKOUT_CHECKLIST, clockOutFarewell: s.clockOutFarewell || DEFAULT_CLOCKOUT_FAREWELL, telegram: { ...tg, ...stg, sendPhoto: stg.sendPhoto !== undefined ? stg.sendPhoto : (tg.sendPhoto !== undefined ? tg.sendPhoto : true), notifications: { ...tg.notifications, ...(stg.notifications||{}) } } }; }
+            if (s) {
+                const _tg = app.settings.telegram;
+                const _stg = s.telegram || {};
+                app.settings = { ...app.settings, ...s,
+                    fullShiftHours: s.fullShiftHours || 9.5,
+                    clockOutChecklist: s.clockOutChecklist || DEFAULT_CLOCKOUT_CHECKLIST,
+                    clockOutFarewell:  s.clockOutFarewell  || DEFAULT_CLOCKOUT_FAREWELL,
+                    telegram: { ..._tg, ..._stg,
+                        notifications: { ..._tg.notifications, ...(_stg.notifications || {}) }
+                    }
+                };
+            }
         }
 
         function loadAuthorizedDevices() {
@@ -1313,12 +1333,13 @@
         }
 
         function sendTelegramClockin(s, time, lateMsg, photoData) {
-            if (!app.settings.telegram.enabled||!(app.settings.telegram.notifications&&app.settings.telegram.notifications.clockIn)) return;
+            const tgn = app.settings.telegram;
+            if (!tgn || !tgn.enabled || !(tgn.notifications && tgn.notifications.clockIn)) return;
             const dn=localStorage.getItem('deviceName')||'Unknown';
             let notif=`🟢 <b>Time-In</b>\n\n<b>Name:</b> ${s.name}\n<b>Date:</b> ${new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}\n<b>Time:</b> ${time}\n`;
             if (lateMsg) { const lt=new Date('2000-01-01 '+time),ct=new Date('2000-01-01 07:35:00'),lm=Math.floor((lt-ct)/60000); notif+=`<b>⚠️ Status:</b> LATE (${lm} min)\n<b>💸 Deduction:</b> ₱${roundUp((getHourlyRate(s.position)/60)*lm).toFixed(2)}\n`; }
             notif+=`<b>Device:</b> ${dn}`;
-            if (photoData && app.settings.telegram.sendPhoto !== false) {
+            if (photoData) {
                 sendTelegramPhoto(notif, photoData);
             } else {
                 sendTelegramNotification(notif);
@@ -1812,45 +1833,34 @@
                     <div class="section-title">📬 Telegram Notifications</div>
 
                     <!-- Enable toggle -->
-                    <div class="form-group" style="margin-bottom:16px;">
-                        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none;">
-                            <input type="checkbox" id="telegram-enabled" ${tg.enabled?'checked':''}
-                                style="width:20px;height:20px;flex-shrink:0;accent-color:var(--blue);"
-                                onchange="toggleTelegramSection(this.checked)">
-                            <span style="font-size:14px;font-weight:600;color:var(--text-1);">Enable Telegram Notifications</span>
-                        </label>
+                    <div style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:${tg.enabled?'#eff6ff':'var(--surface-2)'};border-radius:var(--radius-sm);border:2px solid ${tg.enabled?'var(--blue)':'var(--border)'};">
+                        <span style="font-size:14px;font-weight:600;color:var(--text-1);">Enable Telegram Notifications</span>
+                        <div onclick="tgToggle()" style="cursor:pointer;width:48px;height:26px;border-radius:13px;background:${tg.enabled?'var(--blue)':'#cbd5e1'};position:relative;flex-shrink:0;">
+                            <div style="position:absolute;top:3px;${tg.enabled?'right:3px':'left:3px'};width:20px;height:20px;border-radius:50%;background:white;box-shadow:0 1px 3px rgba(0,0,0,.3);"></div>
+                        </div>
+                        <input type="checkbox" id="telegram-enabled" ${tg.enabled?'checked':''} style="display:none;" onchange="toggleTelegramSection(this.checked)">
                     </div>
 
                     <!-- Config section -->
-                    <div id="telegram-config-section" style="transition:opacity .2s;${tg.enabled?'':'opacity:.45;pointer-events:none;'}">
+                    <div id="telegram-config-section" style="transition:opacity .2s;${tg.enabled?'':'opacity:.4;pointer-events:none;'}">
                         <div class="form-grid" style="margin-bottom:16px;">
-                            <div class="form-group"><label>Bot Token</label><input type="text" id="telegram-token" value="${tg.botToken}" placeholder="123456789:ABC..." autocomplete="off" autocorrect="off"></div>
-                            <div class="form-group"><label>Chat ID</label><input type="text" id="telegram-chatid" value="${tg.chatId}" placeholder="123456789" inputmode="numeric"></div>
+                            <div class="form-group"><label>Bot Token</label><input type="text" id="telegram-token" value="${tg.botToken||''}" placeholder="123456789:ABC..." autocomplete="off" autocorrect="off" spellcheck="false"></div>
+                            <div class="form-group"><label>Chat ID</label><input type="text" id="telegram-chatid" value="${tg.chatId||''}" placeholder="123456789" inputmode="numeric"></div>
                         </div>
 
                         <div style="margin-bottom:16px;">
                             <div style="font-size:13px;font-weight:600;color:var(--text-2);margin-bottom:8px;">Notification Types</div>
-                            <div style="display:flex;flex-direction:column;gap:6px;">
-                                <label style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--surface-2);border-radius:var(--radius-sm);cursor:pointer;user-select:none;">
-                                    <input type="checkbox" id="notif-clockin" ${(tg.notifications&&tg.notifications.clockIn)?'checked':''}
-                                        style="width:20px;height:20px;flex-shrink:0;accent-color:var(--green);">
-                                    <span style="font-size:14px;">🟢 Clock In notifications</span>
-                                </label>
-                                <label style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--surface-2);border-radius:var(--radius-sm);cursor:pointer;user-select:none;">
-                                    <input type="checkbox" id="notif-clockout" ${(tg.notifications&&tg.notifications.clockOut)?'checked':''}
-                                        style="width:20px;height:20px;flex-shrink:0;accent-color:var(--red);">
-                                    <span style="font-size:14px;">🔴 Clock Out notifications</span>
-                                </label>
-                                <label style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--surface-2);border-radius:var(--radius-sm);cursor:pointer;user-select:none;">
-                                    <input type="checkbox" id="notif-deduction" ${(tg.notifications&&tg.notifications.newDeduction)?'checked':''}
-                                        style="width:20px;height:20px;flex-shrink:0;accent-color:var(--amber);">
-                                    <span style="font-size:14px;">💸 New Deduction notifications</span>
-                                </label>
-                                <label style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--surface-2);border-radius:var(--radius-sm);cursor:pointer;user-select:none;">
-                                    <input type="checkbox" id="notif-sendphoto" ${tg.sendPhoto!==false?'checked':''}
-                                        style="width:20px;height:20px;flex-shrink:0;accent-color:var(--purple);">
-                                    <span style="font-size:14px;">📷 Send clock-in photo with notification</span>
-                                </label>
+                            <div style="display:flex;flex-direction:column;gap:8px;">
+                                ${[{id:'notif-clockin',key:'clockIn',label:'🟢 Clock In'},{id:'notif-clockout',key:'clockOut',label:'🔴 Clock Out'},{id:'notif-deduction',key:'newDeduction',label:'💸 New Deduction'}].map(item => {
+                                    const on = !!(tg.notifications && tg.notifications[item.key]);
+                                    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:${on?'#f0fdf4':'var(--surface-2)'};border-radius:var(--radius-sm);border:1.5px solid ${on?'var(--green)':'var(--border)'};">
+                                        <span style="font-size:14px;font-weight:500;">${item.label}</span>
+                                        <div onclick="tgNotifToggle('${item.id}',this.parentElement)" style="cursor:pointer;width:44px;height:24px;border-radius:12px;background:${on?'var(--green)':'#cbd5e1'};position:relative;flex-shrink:0;">
+                                            <div style="position:absolute;top:2px;${on?'right:2px':'left:2px'};width:20px;height:20px;border-radius:50%;background:white;box-shadow:0 1px 3px rgba(0,0,0,.3);"></div>
+                                        </div>
+                                        <input type="checkbox" id="${item.id}" ${on?'checked':''} style="display:none;">
+                                    </div>`;
+                                }).join('')}
                             </div>
                         </div>
 
@@ -1864,12 +1874,25 @@
         }
 
         // Settings helpers
+        function tgToggle() {
+            const cb = document.getElementById('telegram-enabled');
+            cb.checked = !cb.checked;
+            toggleTelegramSection(cb.checked);
+            render();
+        }
+        function tgNotifToggle(id, rowEl) {
+            const cb = document.getElementById(id);
+            cb.checked = !cb.checked;
+            const on = cb.checked;
+            const slider = rowEl.querySelector('div[onclick]');
+            slider.style.background = on ? 'var(--green)' : '#cbd5e1';
+            slider.querySelector('div').style.cssText = `position:absolute;top:2px;${on?'right:2px;':'left:2px;'}width:20px;height:20px;border-radius:50%;background:white;box-shadow:0 1px 3px rgba(0,0,0,.3);`;
+            rowEl.style.background = on ? '#f0fdf4' : 'var(--surface-2)';
+            rowEl.style.borderColor = on ? 'var(--green)' : 'var(--border)';
+        }
         function toggleTelegramSection(enabled) {
             const sec = document.getElementById('telegram-config-section');
-            if (sec) {
-                sec.style.opacity = enabled ? '1' : '0.45';
-                sec.style.pointerEvents = enabled ? '' : 'none';
-            }
+            if (sec) { sec.style.opacity = enabled ? '1' : '0.4'; sec.style.pointerEvents = enabled ? '' : 'none'; }
         }
 
         function saveClockoutMessage() {
@@ -1915,59 +1938,61 @@
             setTimeout(()=>{alert('Password changed! You will be logged out.');app.adminMode=false;app.view='clock';render();},2000);
         }
 
-        // ─── FIXED saveTelegramSettings ──────────────────────────
         function saveTelegramSettings() {
-            const enabledEl   = document.getElementById('telegram-enabled');
-            const tokenEl     = document.getElementById('telegram-token');
-            const chatIdEl    = document.getElementById('telegram-chatid');
-            const clockInEl   = document.getElementById('notif-clockin');
-            const clockOutEl  = document.getElementById('notif-clockout');
-            const deductEl    = document.getElementById('notif-deduction');
-            const sendPhotoEl = document.getElementById('notif-sendphoto');
-
-            const en = enabledEl  ? enabledEl.checked     : false;
-            const bt = tokenEl    ? tokenEl.value.trim()  : '';
-            const ci = chatIdEl   ? chatIdEl.value.trim() : '';
+            const en = document.getElementById('telegram-enabled')?.checked || false;
+            const bt = document.getElementById('telegram-token')?.value.trim() || '';
+            const ci = document.getElementById('telegram-chatid')?.value.trim() || '';
+            const clockIn   = document.getElementById('notif-clockin')?.checked   ?? true;
+            const clockOut  = document.getElementById('notif-clockout')?.checked  ?? true;
+            const deduction = document.getElementById('notif-deduction')?.checked ?? true;
 
             if (en && (!bt || !ci)) return showMsg('telegram-msg','❌ Enter Bot Token and Chat ID','err');
 
-            const notifs = app.settings.telegram.notifications || {};
             app.settings.telegram = {
-                enabled: en,
+                enabled:  en,
                 botToken: bt,
-                chatId: ci,
-                sendPhoto: sendPhotoEl ? sendPhotoEl.checked : (app.settings.telegram.sendPhoto !== false),
+                chatId:   ci,
                 notifications: {
-                    clockIn:          clockInEl  ? clockInEl.checked  : notifs.clockIn,
-                    clockOut:         clockOutEl ? clockOutEl.checked : notifs.clockOut,
-                    newDeduction:     deductEl   ? deductEl.checked   : notifs.newDeduction,
+                    clockIn:          clockIn,
+                    clockOut:         clockOut,
+                    newDeduction:     deduction,
                     payrollGenerated: false
                 }
             };
-
             saveData();
             showMsg('telegram-msg','✅ Telegram settings saved!','ok');
         }
 
-        async function sendTelegramNotification(msg) {
-            if(!app.settings.telegram.enabled)return;
-            const{botToken,chatId}=app.settings.telegram;if(!botToken||!chatId)return;
-            try{await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chat_id:chatId,text:msg,parse_mode:'HTML'})});}catch(e){}
-        }
         async function sendTelegramPhoto(caption, photoData) {
-            if(!app.settings.telegram.enabled||app.settings.telegram.sendPhoto===false)return;
-            if(!photoData)return;
-            const{botToken,chatId}=app.settings.telegram;if(!botToken||!chatId)return;
+            const tg = app.settings.telegram;
+            if (!tg || !tg.enabled || !photoData) return;
+            if (!tg.botToken || !tg.chatId) return;
             try {
-                const res = await fetch(photoData);
+                const res  = await fetch(photoData);
                 const blob = await res.blob();
-                const fd = new FormData();
-                fd.append('chat_id', chatId);
+                const fd   = new FormData();
+                fd.append('chat_id', tg.chatId);
                 fd.append('photo', blob, 'clockin.jpg');
                 fd.append('caption', caption);
                 fd.append('parse_mode', 'HTML');
-                await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {method:'POST', body:fd});
-            } catch(e) {}
+                const r = await fetch(`https://api.telegram.org/bot${tg.botToken}/sendPhoto`, { method: 'POST', body: fd });
+                const d = await r.json();
+                if (!d.ok) { console.error('Telegram sendPhoto failed:', d.description); sendTelegramNotification(caption); }
+            } catch(e) { console.error('Telegram photo error:', e.message); sendTelegramNotification(caption); }
+        }
+        async function sendTelegramNotification(msg) {
+            const tg = app.settings.telegram;
+            if (!tg || !tg.enabled) return;
+            if (!tg.botToken || !tg.chatId) { console.warn('Telegram: missing token/chatId'); return; }
+            try {
+                const r = await fetch(`https://api.telegram.org/bot${tg.botToken}/sendMessage`, {
+                    method: 'POST',
+                    headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({chat_id: tg.chatId, text: msg, parse_mode: 'HTML'})
+                });
+                const d = await r.json();
+                if (!d.ok) console.error('Telegram sendMessage failed:', d.description);
+            } catch(e) { console.error('Telegram error:', e.message); }
         }
         async function testTelegramNotification() {
             const bt=document.getElementById('telegram-token').value.trim(), ci=document.getElementById('telegram-chatid').value.trim();
