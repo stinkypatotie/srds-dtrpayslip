@@ -1182,10 +1182,11 @@
         }
 
         function renderTodayCards() {
+            if (!app.adminMode) return '';
             const td = today(), recs = app.records.filter(r => r.date === td);
             if (recs.length === 0) return `<div style="text-align:center;padding:32px;color:var(--text-3);font-size:14px;">No activity yet today</div>`;
             return `
-                <div style="margin-top:20px; admin=true;">
+                <div style="margin-top:20px;">
                     <div style="font-size:14px;font-weight:700;color:var(--text-2);margin-bottom:10px;text-transform:uppercase;letter-spacing:.6px;">Today's Activity</div>
                     ${recs.map(r => {
                         const s = app.staff.find(x=>x.id===r.sid);
