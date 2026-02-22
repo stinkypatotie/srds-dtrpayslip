@@ -24,6 +24,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
 
+
     <style>
         /* ═══════════════════════════════════════════════
            DESIGN TOKENS & RESET
@@ -546,6 +547,53 @@
             .sidebar, .bottom-nav, .no-print { display: none !important; }
             .main-wrapper { margin-left: 0; padding: 0; }
         }
+
+        /* ═══════════════════════════════════════════════
+           FACE RECOGNITION
+        ═══════════════════════════════════════════════ */
+        .face-modal-content {
+            background: var(--surface);
+            border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+            width: 100%; max-width: 480px; overflow: hidden;
+            animation: slideUp .3s cubic-bezier(.34,1.56,.64,1);
+            padding-bottom: var(--safe-bottom);
+        }
+        .face-video-wrap { position: relative; border-radius: var(--radius); overflow: hidden; background: #000; }
+        .face-video-wrap video { width: 100%; display: block; max-height: 280px; object-fit: cover; }
+        .face-video-wrap canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+        .face-scan-line {
+            position: absolute; left: 8px; right: 8px; height: 2px;
+            background: linear-gradient(90deg, transparent, #22c55e, transparent);
+            box-shadow: 0 0 8px #22c55e; animation: scanLine 2.2s ease-in-out infinite;
+            pointer-events: none; border-radius: 2px;
+        }
+        @keyframes scanLine { 0%{top:8%;opacity:.9;} 50%{top:88%;opacity:.9;} 100%{top:8%;opacity:.9;} }
+        .face-corner { position: absolute; width: 22px; height: 22px; border-color: #22c55e; border-style: solid; border-width: 0; }
+        .face-corner.tl { top:10px; left:10px; border-top-width:3px; border-left-width:3px; border-radius:4px 0 0 0; }
+        .face-corner.tr { top:10px; right:10px; border-top-width:3px; border-right-width:3px; border-radius:0 4px 0 0; }
+        .face-corner.bl { bottom:10px; left:10px; border-bottom-width:3px; border-left-width:3px; border-radius:0 0 0 4px; }
+        .face-corner.br { bottom:10px; right:10px; border-bottom-width:3px; border-right-width:3px; border-radius:0 0 4px 0; }
+        .face-status-box {
+            text-align:center; padding:12px 16px; font-size:14px; font-weight:600;
+            color:var(--text-2); background:var(--surface-2); border-radius:var(--radius-sm);
+            margin-top:12px; min-height:46px; display:flex; align-items:center; justify-content:center;
+        }
+        .face-progress-wrap { display:none; margin-top:12px; background:var(--surface-3); border-radius:20px; height:10px; overflow:hidden; }
+        .face-progress-bar { height:100%; background:var(--green); border-radius:20px; width:0%; transition:width .35s ease; }
+        .face-result-box { display:none; margin-top:12px; padding:16px; text-align:center; background:#f0fdf4; border-radius:var(--radius); border:2px solid var(--green); }
+        .face-result-box .fri { font-size:36px; margin-bottom:6px; }
+        .face-result-box .frn { font-weight:800; font-size:19px; color:var(--navy); }
+        .face-result-box .frc { font-size:13px; color:var(--text-2); margin-top:4px; }
+        .face-badge { display:inline-flex; align-items:center; gap:4px; padding:3px 8px; border-radius:20px; font-size:11px; font-weight:700; }
+        .face-badge.registered { background:#dcfce7; color:var(--green-dark); }
+        .face-badge.none { background:var(--surface-3); color:var(--text-3); }
+        .face-or-divider { display:flex; align-items:center; gap:12px; margin:12px 0; color:var(--text-3); font-size:12px; font-weight:600; }
+        .face-or-divider::before, .face-or-divider::after { content:''; flex:1; height:1px; background:var(--border); }
+        .face-btn-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:4px; }
+        .face-action-btn { padding:14px 10px; border-radius:var(--radius); font-size:14px; font-weight:700; border:none; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:5px; transition:all .15s; background:var(--navy); color:white; }
+        .face-action-btn .btn-emoji { font-size:22px; }
+        .face-action-btn:active { transform:scale(.96); }
+        .face-models-banner { background:linear-gradient(135deg,#eff6ff,#f0fdf4); border:1px solid #bfdbfe; border-radius:var(--radius-sm); padding:10px 14px; font-size:13px; font-weight:600; color:#1e40af; display:flex; align-items:center; gap:8px; margin-bottom:12px; }
     </style>
 </head>
 <body>
@@ -670,6 +718,66 @@
         </div>
     </div>
 
+
+    <!-- ─── FACE LOGIN MODAL ─────────────────────────────────── -->
+    <div id="face-login-modal" class="modal" style="display:none;">
+        <div class="face-modal-content">
+            <div class="camera-header">
+                <div class="store-label">Sir Ramos Drugstore</div>
+                <h2 id="face-login-title">👤 Face Recognition</h2>
+            </div>
+            <div class="camera-body">
+                <div class="face-video-wrap">
+                    <video id="face-login-video" autoplay playsinline muted></video>
+                    <canvas id="face-login-overlay"></canvas>
+                    <div class="face-scan-line" id="face-scan-line"></div>
+                    <div class="face-corner tl"></div>
+                    <div class="face-corner tr"></div>
+                    <div class="face-corner bl"></div>
+                    <div class="face-corner br"></div>
+                </div>
+                <div id="face-login-status" class="face-status-box">Initializing...</div>
+                <div id="face-login-result" class="face-result-box">
+                    <div class="fri" id="face-result-icon">✅</div>
+                    <div class="frn" id="face-result-name"></div>
+                    <div class="frc" id="face-result-conf"></div>
+                </div>
+            </div>
+            <div class="camera-footer">
+                <button style="background:var(--surface-3);color:var(--text-2);" onclick="closeFaceLoginModal()">✕ Cancel</button>
+                <button class="btn-muted" onclick="closeFaceLoginModal()">🔑 Use PIN</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ─── FACE ENROLL MODAL ─────────────────────────────────── -->
+    <div id="face-enroll-modal" class="modal" style="display:none;">
+        <div class="face-modal-content">
+            <div class="camera-header">
+                <div class="store-label">Face Enrollment</div>
+                <h2 id="face-enroll-name">📸 Register Face</h2>
+            </div>
+            <div class="camera-body">
+                <div class="face-video-wrap">
+                    <video id="face-enroll-video" autoplay playsinline muted></video>
+                    <canvas id="face-enroll-overlay"></canvas>
+                    <div class="face-corner tl"></div>
+                    <div class="face-corner tr"></div>
+                    <div class="face-corner bl"></div>
+                    <div class="face-corner br"></div>
+                </div>
+                <div id="face-enroll-status" class="face-status-box">Loading...</div>
+                <div class="face-progress-wrap" id="face-enroll-progress-wrap">
+                    <div class="face-progress-bar" id="face-enroll-bar"></div>
+                </div>
+            </div>
+            <div class="camera-footer">
+                <button style="background:var(--surface-3);color:var(--text-2);" onclick="closeFaceEnrollModal()">✕ Cancel</button>
+                <button class="btn-primary" id="face-enroll-start-btn" onclick="startFaceEnrollment()">📸 Start Capture</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         // ═══════════════════════════════════════════════
         // FIREBASE CONFIG
@@ -687,6 +795,310 @@
 
         let db = null, isFirebaseInitialized = false;
         let currentEditingStaffId = null, pendingClockOut = null;
+
+        // ═══════════════════════════════════════════════
+        // FACE RECOGNITION STATE
+        // ═══════════════════════════════════════════════
+        const FACE_MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights';
+        let faceApiLoaded = false;
+        let faceApiLoading = false;
+        let faceDescriptorsMap = {};   // staffId -> Float32Array(128)
+        let faceLoginStream = null;
+        let faceEnrollStream = null;
+        let faceLoginInterval = null;
+        let faceEnrollInterval = null;
+        let pendingFaceAction = null;  // 'in' | 'out'
+        let enrollingStaffId = null;
+
+        async function loadFaceApiScript() {
+            if (typeof faceapi !== 'undefined') return true;
+            return new Promise((resolve) => {
+                const script = document.createElement('script');
+                script.src = 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js';
+                script.onload  = () => resolve(true);
+                script.onerror = () => { console.error('face-api.js CDN failed'); resolve(false); };
+                document.head.appendChild(script);
+            });
+        }
+
+        async function loadFaceModels() {
+            if (faceApiLoaded) return true;
+            if (faceApiLoading) return new Promise(res => {
+                const wait = setInterval(() => { if (!faceApiLoading) { clearInterval(wait); res(faceApiLoaded); } }, 200);
+            });
+            faceApiLoading = true;
+            try {
+                const scriptLoaded = await loadFaceApiScript();
+                if (!scriptLoaded || typeof faceapi === 'undefined') {
+                    faceApiLoading = false;
+                    return false;
+                }
+                await Promise.all([
+                    faceapi.nets.ssdMobilenetv1.loadFromUri(FACE_MODELS_URL),
+                    faceapi.nets.faceLandmark68Net.loadFromUri(FACE_MODELS_URL),
+                    faceapi.nets.faceRecognitionNet.loadFromUri(FACE_MODELS_URL)
+                ]);
+                faceApiLoaded = true;
+            } catch(e) { console.error('Face models failed:', e); }
+            faceApiLoading = false;
+            return faceApiLoaded;
+        }
+
+        function loadFaceDescriptors() {
+            const parse = (raw) => {
+                if (!raw) return;
+                Object.keys(raw).forEach(sid => {
+                    const arr = raw[sid];
+                    const f32 = new Float32Array(128);
+                    for (let i = 0; i < 128; i++) f32[i] = arr[i] || 0;
+                    faceDescriptorsMap[sid] = f32;
+                });
+            };
+            if (isFirebaseInitialized) {
+                db.ref('faceDescriptors').once('value').then(snap => {
+                    parse(snap.val());
+                }).catch(() => parse(JSON.parse(localStorage.getItem('faceDescriptors') || 'null')));
+            } else {
+                parse(JSON.parse(localStorage.getItem('faceDescriptors') || 'null'));
+            }
+        }
+
+        async function loadFaceDescriptorsAsync() {
+            const parse = (raw) => {
+                if (!raw) return;
+                Object.keys(raw).forEach(sid => {
+                    if (faceDescriptorsMap[sid]) return;
+                    const arr = raw[sid];
+                    const f32 = new Float32Array(128);
+                    for (let i = 0; i < 128; i++) f32[i] = arr[i] || 0;
+                    faceDescriptorsMap[sid] = f32;
+                });
+            };
+            if (isFirebaseInitialized) {
+                try {
+                    const snap = await db.ref('faceDescriptors').once('value');
+                    parse(snap.val());
+                } catch(e) { parse(JSON.parse(localStorage.getItem('faceDescriptors') || 'null')); }
+            } else {
+                parse(JSON.parse(localStorage.getItem('faceDescriptors') || 'null'));
+            }
+        }
+
+        function saveFaceDescriptor(sid, descriptor) {
+            faceDescriptorsMap[sid] = new Float32Array(descriptor);
+            const toSave = {};
+            Object.keys(faceDescriptorsMap).forEach(k => { toSave[k] = Array.from(faceDescriptorsMap[k]); });
+            localStorage.setItem('faceDescriptors', JSON.stringify(toSave));
+            if (isFirebaseInitialized) db.ref('faceDescriptors').set(toSave).catch(() => {});
+        }
+
+        function deleteFaceDescriptor(sid) {
+            delete faceDescriptorsMap[sid];
+            const toSave = {};
+            Object.keys(faceDescriptorsMap).forEach(k => { toSave[k] = Array.from(faceDescriptorsMap[k]); });
+            localStorage.setItem('faceDescriptors', JSON.stringify(toSave));
+            if (isFirebaseInitialized) db.ref('faceDescriptors').set(toSave).catch(() => {});
+        }
+
+        // ─── FACE ENROLLMENT ──────────────────────────
+        async function openFaceEnrollModal(staffId) {
+            enrollingStaffId = staffId;
+            const s = app.staff.find(x => x.id === staffId);
+            if (!s) return;
+            const modal = document.getElementById('face-enroll-modal');
+            document.getElementById('face-enroll-name').textContent = '📸 Register: ' + s.name;
+            document.getElementById('face-enroll-status').textContent = '⏳ Loading face recognition models...';
+            document.getElementById('face-enroll-start-btn').disabled = true;
+            document.getElementById('face-enroll-progress-wrap').style.display = 'none';
+            document.getElementById('face-enroll-bar').style.width = '0%';
+            modal.style.display = 'flex';
+            const loaded = await loadFaceModels();
+            if (!loaded) {
+                document.getElementById('face-enroll-status').textContent = '❌ Face recognition unavailable. Check internet connection.';
+                return;
+            }
+            try {
+                faceEnrollStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false });
+                document.getElementById('face-enroll-video').srcObject = faceEnrollStream;
+                document.getElementById('face-enroll-status').textContent = '📷 Position your face clearly in the frame, then tap Start Capture.';
+                document.getElementById('face-enroll-start-btn').disabled = false;
+            } catch(e) {
+                document.getElementById('face-enroll-status').textContent = '❌ Camera unavailable.';
+            }
+        }
+
+        async function startFaceEnrollment() {
+            const video = document.getElementById('face-enroll-video');
+            const overlay = document.getElementById('face-enroll-overlay');
+            const statusEl = document.getElementById('face-enroll-status');
+            const progressWrap = document.getElementById('face-enroll-progress-wrap');
+            const progressBar = document.getElementById('face-enroll-bar');
+            const startBtn = document.getElementById('face-enroll-start-btn');
+            startBtn.disabled = true;
+            progressWrap.style.display = 'block';
+            const TARGET = 5;
+            const descriptors = [];
+            let retries = 0;
+            const ctx = overlay.getContext('2d');
+            const drawBox = (det, color) => {
+                overlay.width = video.videoWidth; overlay.height = video.videoHeight;
+                ctx.clearRect(0, 0, overlay.width, overlay.height);
+                if (!det) return;
+                const b = det.detection.box;
+                ctx.strokeStyle = color; ctx.lineWidth = 3;
+                ctx.strokeRect(b.x, b.y, b.width, b.height);
+            };
+            const capture = async () => {
+                if (descriptors.length >= TARGET) {
+                    clearInterval(faceEnrollInterval);
+                    if (faceEnrollStream) { faceEnrollStream.getTracks().forEach(t => t.stop()); faceEnrollStream = null; }
+                    const avg = new Float32Array(128);
+                    for (const d of descriptors) for (let j = 0; j < 128; j++) avg[j] += d[j];
+                    for (let j = 0; j < 128; j++) avg[j] /= descriptors.length;
+                    saveFaceDescriptor(enrollingStaffId, avg);
+                    progressBar.style.width = '100%';
+                    statusEl.textContent = '✅ Face registered successfully!';
+                    setTimeout(() => { closeFaceEnrollModal(); render(); }, 1600);
+                    return;
+                }
+                try {
+                    const det = await faceapi.detectSingleFace(video, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 })).withFaceLandmarks().withFaceDescriptor();
+                    if (det) {
+                        drawBox(det, '#22c55e');
+                        descriptors.push(det.descriptor);
+                        progressBar.style.width = ((descriptors.length / TARGET) * 100) + '%';
+                        statusEl.textContent = '📸 Capturing ' + descriptors.length + ' / ' + TARGET + '... Hold still!';
+                        retries = 0;
+                    } else {
+                        retries++;
+                        drawBox(null, '');
+                        statusEl.textContent = retries > 5 ? '⚠️ No face detected — check lighting & position.' : '🔍 Looking for face...';
+                    }
+                } catch(e) { console.error(e); }
+            };
+            faceEnrollInterval = setInterval(capture, 700);
+        }
+
+        function closeFaceEnrollModal() {
+            clearInterval(faceEnrollInterval);
+            if (faceEnrollStream) { faceEnrollStream.getTracks().forEach(t => t.stop()); faceEnrollStream = null; }
+            document.getElementById('face-enroll-modal').style.display = 'none';
+            enrollingStaffId = null;
+        }
+
+        // ─── FACE LOGIN ───────────────────────────────
+        async function openFaceLoginModal(action) {
+            pendingFaceAction = action;
+            const modal = document.getElementById('face-login-modal');
+            document.getElementById('face-login-title').textContent = action === 'in' ? '👤 Clock In — Face Scan' : '👤 Clock Out — Face Scan';
+            document.getElementById('face-login-status').textContent = '⏳ Loading face recognition models...';
+            document.getElementById('face-login-result').style.display = 'none';
+            const scanLine = document.getElementById('face-scan-line');
+            if (scanLine) scanLine.style.display = 'block';
+            modal.style.display = 'flex';
+            const loaded = await loadFaceModels();
+            if (!loaded) {
+                document.getElementById('face-login-status').textContent = '❌ Face recognition unavailable. Use PIN instead.';
+                return;
+            }
+            await loadFaceDescriptorsAsync();
+            if (Object.keys(faceDescriptorsMap).length === 0) {
+                document.getElementById('face-login-status').textContent = '⚠️ No faces registered yet. Please register staff faces first.';
+                return;
+            }
+            try {
+                faceLoginStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false });
+                document.getElementById('face-login-video').srcObject = faceLoginStream;
+                document.getElementById('face-login-status').textContent = '🔍 Scanning... Look directly at the camera.';
+                startFaceScanning();
+            } catch(e) {
+                document.getElementById('face-login-status').textContent = '❌ Camera unavailable. Use PIN instead.';
+            }
+        }
+
+        function startFaceScanning() {
+            const video = document.getElementById('face-login-video');
+            const overlay = document.getElementById('face-login-overlay');
+            const ctx = overlay.getContext('2d');
+            let matchBuffer = [];
+            const threshold = app.settings.faceThreshold !== undefined ? app.settings.faceThreshold : 0.5;
+            faceLoginInterval = setInterval(async () => {
+                if (!faceLoginStream) { clearInterval(faceLoginInterval); return; }
+                try {
+                    overlay.width = video.videoWidth; overlay.height = video.videoHeight;
+                    ctx.clearRect(0, 0, overlay.width, overlay.height);
+                    const det = await faceapi.detectSingleFace(video, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 })).withFaceLandmarks().withFaceDescriptor();
+                    if (!det) { matchBuffer = []; document.getElementById('face-login-status').textContent = '🔍 Scanning... Look directly at the camera.'; return; }
+                    const b = det.detection.box;
+                    let bestSid = null, bestDist = Infinity;
+                    Object.keys(faceDescriptorsMap).forEach(sid => {
+                        const dist = faceapi.euclideanDistance(det.descriptor, faceDescriptorsMap[sid]);
+                        if (dist < bestDist) { bestDist = dist; bestSid = sid; }
+                    });
+                    const matched = bestSid && bestDist < threshold;
+                    ctx.strokeStyle = matched ? '#22c55e' : '#f59e0b'; ctx.lineWidth = 3;
+                    ctx.strokeRect(b.x, b.y, b.width, b.height);
+                    const conf = Math.round((1 - bestDist) * 100);
+                    if (matched) {
+                        matchBuffer.push(bestSid);
+                        document.getElementById('face-login-status').textContent = '✅ Match found! Verifying... (' + conf + '%)';
+                        if (matchBuffer.length >= 3) {
+                            const freq = matchBuffer.reduce((a,s)=>{a[s]=(a[s]||0)+1;return a;},{});
+                            const confirmed = Object.keys(freq).sort((a,b)=>freq[b]-freq[a])[0];
+                            if (freq[confirmed] >= 2) {
+                                clearInterval(faceLoginInterval);
+                                stopFaceLoginStream();
+                                processFaceMatch(confirmed, bestDist);
+                            }
+                        }
+                    } else {
+                        matchBuffer = [];
+                        document.getElementById('face-login-status').textContent = bestSid ? '🔄 Scanning... (' + conf + '% — keep still)' : '🔍 Face detected — not recognized yet...';
+                    }
+                } catch(e) { console.error(e); }
+            }, 500);
+        }
+
+        function processFaceMatch(sid, distance) {
+            const s = app.staff.find(x => x.id === sid);
+            if (!s) return;
+            const conf = Math.round((1 - distance) * 100);
+            const resultEl = document.getElementById('face-login-result');
+            document.getElementById('face-result-icon').textContent = '✅';
+            document.getElementById('face-result-name').textContent = s.name;
+            document.getElementById('face-result-conf').textContent = 'Match confidence: ' + conf + '%';
+            resultEl.style.display = 'block';
+            const scanLine = document.getElementById('face-scan-line');
+            if (scanLine) scanLine.style.display = 'none';
+            document.getElementById('face-login-status').textContent = 'Recognized! Processing ' + (pendingFaceAction === 'in' ? 'clock-in' : 'clock-out') + '...';
+            setTimeout(() => {
+                document.getElementById('face-login-modal').style.display = 'none';
+                if (pendingFaceAction === 'in') {
+                    const td = today(), existing = app.records.find(r => r.sid == sid && r.date === td);
+                    if (existing && existing.in && !existing.status) { showMsg('clock-msg', s.name + ' is already clocked in today', 'err'); return; }
+                    if (app.settings.photoCapture && app.settings.photoCapture.captureEnabled === false) { doClockIn(sid, s, null, null); }
+                    else { openCameraModal(sid, s); }
+                } else {
+                    const td = today(), rec = app.records.find(r => r.sid == sid && r.date === td);
+                    if (!rec || !rec.in) { showMsg('clock-msg', 'No clock-in record for today', 'err'); return; }
+                    if (rec.out) { showMsg('clock-msg', 'Already clocked out today', 'err'); return; }
+                    pendingClockOut = { sid, pin: s.pin };
+                    showClockoutModal(sid, td);
+                }
+            }, 1400);
+        }
+
+        function stopFaceLoginStream() {
+            if (faceLoginStream) { faceLoginStream.getTracks().forEach(t => t.stop()); faceLoginStream = null; }
+        }
+
+        function closeFaceLoginModal() {
+            clearInterval(faceLoginInterval);
+            stopFaceLoginStream();
+            document.getElementById('face-login-modal').style.display = 'none';
+            pendingFaceAction = null;
+        }
+
 
         try {
             firebase.initializeApp(firebaseConfig);
@@ -784,7 +1196,9 @@
                 fullShiftHours: 9.5,
                 clockOutChecklist: DEFAULT_CLOCKOUT_CHECKLIST,
                 clockOutFarewell: DEFAULT_CLOCKOUT_FAREWELL,
-                telegram: { enabled: false, botToken: '', chatId: '', notifications: { clockIn: true, clockOut: true, newDeduction: true, payrollGenerated: false } }
+                telegram: { enabled: false, botToken: '', chatId: '', notifications: { clockIn: true, clockOut: true, newDeduction: true, payrollGenerated: false } },
+                photoCapture: { captureEnabled: true, sendViaTelegram: true },
+                faceThreshold: 0.5
             },
             start: '', end: '', view: 'clock', editingRecord: null, adminMode: false
         };
@@ -841,7 +1255,9 @@
                                 clockOutFarewell:  data.settings.clockOutFarewell  || DEFAULT_CLOCKOUT_FAREWELL,
                                 telegram: { ..._tg2, ..._stg2,
                                     notifications: { ..._tg2.notifications, ...(_stg2.notifications || {}) }
-                                }
+                                },
+                                photoCapture: { ...app.settings.photoCapture, ...(data.settings.photoCapture || {}) },
+                                faceThreshold: data.settings.faceThreshold !== undefined ? data.settings.faceThreshold : 0.5
                             };
                         }
                     } else loadFromLocalStorage();
@@ -864,7 +1280,9 @@
                     clockOutFarewell:  s.clockOutFarewell  || DEFAULT_CLOCKOUT_FAREWELL,
                     telegram: { ..._tg, ..._stg,
                         notifications: { ..._tg.notifications, ...(_stg.notifications || {}) }
-                    }
+                    },
+                    photoCapture: { ...app.settings.photoCapture, ...(s.photoCapture || {}) },
+                    faceThreshold: s.faceThreshold !== undefined ? s.faceThreshold : 0.5
                 };
             }
         }
@@ -1194,6 +1612,14 @@
                         <button class="clock-action-btn in" onclick="clockIn()"><span class="btn-emoji">⏰</span>Clock In</button>
                         <button class="clock-action-btn out" onclick="clockOut()"><span class="btn-emoji">🏁</span>Clock Out</button>
                     </div>
+                    ${Object.keys(faceDescriptorsMap).length > 0 ? `
+                    <div class="face-or-divider">or use face recognition</div>
+                    <div class="face-btn-row">
+                        <button class="face-action-btn" onclick="openFaceLoginModal('in')"><span class="btn-emoji">🙂</span>Face Clock In</button>
+                        <button class="face-action-btn" onclick="openFaceLoginModal('out')"><span class="btn-emoji">🙂</span>Face Clock Out</button>
+                    </div>` : `
+                    ${faceApiLoading ? '<div class="face-models-banner">⏳ Loading face recognition models...</div>' : ''}
+                    `}
                     <div id="clock-msg" class="msg" style="display:none;"></div>
                 </div>
 				${!app.adminMode ? `<div style="text-align:center;margin-top:8px;"><button class="btn-muted btn-sm" onclick="showAdminLogin()">🔐 Admin Login</button></div>` : `<div style="text-align:center;margin-top:8px;"><button class="btn-danger btn-sm" onclick="exitAdminMode()">🚪 Exit Admin Mode</button></div>`}
@@ -1238,7 +1664,11 @@
             if (existing&&existing.in&&!existing.status) return showMsg('clock-msg','Already clocked in today','err');
 
             // Open camera modal — actual clock-in happens after photo
-            openCameraModal(sid, s);
+            if (app.settings.photoCapture && app.settings.photoCapture.captureEnabled === false) {
+                doClockIn(sid, s, null, null);
+            } else {
+                openCameraModal(sid, s);
+            }
         }
 
         // Separated: actual clock-in logic (called after camera)
@@ -1277,13 +1707,27 @@
             if (!sid||!pin) return showMsg('clock-msg','Select staff and enter PIN','err');
             const s=app.staff.find(x=>x.id==sid);
             if (!s||s.pin!==pin) return showMsg('clock-msg','Invalid PIN','err');
-            const td=today(), rec=app.records.find(r=>r.sid==sid&&r.date===td);
-            if (!rec) return showMsg('clock-msg','No clock-in record for today','err');
-            if (!rec.in) return showMsg('clock-msg','Not clocked in yet today','err');
-            if (rec.out) return showMsg('clock-msg','Already clocked out today','err');
-            if (rec.status) return showMsg('clock-msg','Cannot clock out – marked as '+rec.status,'err');
-            pendingClockOut = {sid, pin};
-            showClockoutModal(sid, td);
+            showMsg('clock-msg','🔄 Checking records...','ok');
+            // Re-sync from Firebase before validating to catch records saved from other devices/sessions
+            const doCheck = () => {
+                const td=today(), rec=app.records.find(r=>r.sid==sid&&r.date===td);
+                if (!rec) return showMsg('clock-msg','No clock-in record for today','err');
+                if (!rec.in) return showMsg('clock-msg','Not clocked in yet today','err');
+                if (rec.out) return showMsg('clock-msg','Already clocked out today','err');
+                if (rec.status) return showMsg('clock-msg','Cannot clock out – marked as '+rec.status,'err');
+                document.getElementById('clock-msg').style.display='none';
+                pendingClockOut = {sid, pin};
+                showClockoutModal(sid, td);
+            };
+            if (isFirebaseInitialized) {
+                db.ref('records').once('value').then(snap => {
+                    const data = snap.val();
+                    if (data) app.records = Array.isArray(data) ? data : Object.values(data);
+                    doCheck();
+                }).catch(() => doCheck());
+            } else {
+                doCheck();
+            }
         }
 
         function showClockoutModal(sid, dateStr) {
@@ -1339,7 +1783,7 @@
             let notif=`🟢 <b>Time-In</b>\n\n<b>Name:</b> ${s.name}\n<b>Date:</b> ${new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}\n<b>Time:</b> ${time}\n`;
             if (lateMsg) { const lt=new Date('2000-01-01 '+time),ct=new Date('2000-01-01 07:35:00'),lm=Math.floor((lt-ct)/60000); notif+=`<b>⚠️ Status:</b> LATE (${lm} min)\n<b>💸 Deduction:</b> ₱${roundUp((getHourlyRate(s.position)/60)*lm).toFixed(2)}\n`; }
             notif+=`<b>Device:</b> ${dn}`;
-            if (photoData) {
+            if (photoData && !(app.settings.photoCapture && app.settings.photoCapture.sendViaTelegram === false)) {
                 sendTelegramPhoto(notif, photoData);
             } else {
                 sendTelegramNotification(notif);
@@ -1629,6 +2073,9 @@
                     </div>
                     <div class="action-buttons">
                         <button class="btn-warning btn-sm" onclick="openEditModal('${s.id}')">✏️</button>
+                        ${faceDescriptorsMap[s.id]
+                            ? `<button class="btn-sm" style="background:#dcfce7;color:var(--green-dark);" onclick="confirmDeleteFace('${s.id}')">👤✅</button>`
+                            : `<button class="btn-info btn-sm" onclick="openFaceEnrollModal('${s.id}')">📸 Face</button>`}
                         <button class="btn-danger btn-sm" onclick="delStaff('${s.id}')">🗑️</button>
                     </div>
                 </div>`).join('')}`;
@@ -1650,7 +2097,15 @@
             if(app.deductions.some(d=>d.staffId===id)) cm+='\n\n⚠️ Also deletes deduction records.';
             if(!confirm(cm))return;
             app.staff=app.staff.filter(x=>x.id!==id);app.records=app.records.filter(r=>r.sid!==id);app.deductions=app.deductions.filter(d=>d.staffId!==id);
+            deleteFaceDescriptor(id);
             saveData();render();
+        }
+
+        function confirmDeleteFace(sid) {
+            const s = app.staff.find(x => x.id === sid); if (!s) return;
+            if (!confirm('Remove face data for ' + s.name + '?\n\nThey will need to re-register their face.')) return;
+            deleteFaceDescriptor(sid);
+            render();
         }
 
         // ═══════════════════════════════════════════════
@@ -1828,6 +2283,59 @@
                     <div id="device-msg" class="msg" style="display:none;margin-top:12px;"></div>
                 </div>
 
+                <!-- Photo Capture Settings -->
+                <div class="card">
+                    <div class="section-title">📸 Photo Settings</div>
+                    <div class="alert alert-blue" style="margin-bottom:14px;"><strong>💡 Tip:</strong> Disabling photo capture skips the selfie step entirely. Disabling "Send via Telegram" still captures the photo locally but sends text-only Telegram notifications.</div>
+                    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">
+                        ${[{id:'photo-capture-enabled',key:'captureEnabled',label:'📷 Enable Photo Capture at Clock-In'},{id:'photo-send-telegram',key:'sendViaTelegram',label:'📤 Send Photo via Telegram'}].map(item => {
+                            const on = app.settings.photoCapture ? app.settings.photoCapture[item.key] !== false : true;
+                            return `<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:${on?'#f0fdf4':'var(--surface-2)'};border-radius:var(--radius-sm);border:1.5px solid ${on?'var(--green)':'var(--border)'};">
+                                <span style="font-size:14px;font-weight:500;">${item.label}</span>
+                                <div onclick="photoSettingToggle('${item.id}',this.parentElement)" style="cursor:pointer;width:44px;height:24px;border-radius:12px;background:${on?'var(--green)':'#cbd5e1'};position:relative;flex-shrink:0;">
+                                    <div style="position:absolute;top:2px;${on?'right:2px':'left:2px'};width:20px;height:20px;border-radius:50%;background:white;box-shadow:0 1px 3px rgba(0,0,0,.3);"></div>
+                                </div>
+                                <input type="checkbox" id="${item.id}" ${on?'checked':''} style="display:none;">
+                            </div>`;
+                        }).join('')}
+                    </div>
+                    <button class="btn-primary btn-sm" onclick="savePhotoSettings()">💾 Save Photo Settings</button>
+                    <div id="photo-settings-msg" class="msg" style="display:none;margin-top:12px;"></div>
+                </div>
+
+                <!-- Face Recognition Settings -->
+                <div class="card">
+                    <div class="section-title">👤 Face Recognition</div>
+                    <div class="alert alert-blue" style="margin-bottom:14px;"><strong>ℹ️ How it works:</strong> Register each staff member's face in the Staff page (📸 Face button). They can then clock in/out using face scan instead of a PIN. PIN remains as fallback.</div>
+                    <div class="form-group" style="margin-bottom:16px;">
+                        <label>Match Sensitivity — Current: ${Math.round((1 - (app.settings.faceThreshold || 0.5)) * 100)}% confidence required</label>
+                        <div style="display:flex;align-items:center;gap:12px;margin-top:8px;">
+                            <span style="font-size:12px;color:var(--text-3);">Strict</span>
+                            <input type="range" id="face-threshold-range" min="30" max="75" value="${Math.round((1-(app.settings.faceThreshold||0.5))*100)}"
+                                oninput="document.getElementById('face-threshold-val').textContent=this.value+'%'"
+                                style="flex:1;padding:0;border:none;background:transparent;box-shadow:none;height:6px;accent-color:var(--blue);">
+                            <span style="font-size:12px;color:var(--text-3);">Lenient</span>
+                        </div>
+                        <div style="text-align:center;font-size:14px;font-weight:700;color:var(--blue);margin-top:6px;" id="face-threshold-val">${Math.round((1-(app.settings.faceThreshold||0.5))*100)}%</div>
+                        <div style="font-size:12px;color:var(--text-3);margin-top:4px;">Recommended: 50–60%. Higher = more lenient (easier to match). Lower = stricter (harder to spoof).</div>
+                    </div>
+                    <div style="margin-bottom:14px;padding:12px 14px;background:var(--surface-2);border-radius:var(--radius-sm);border:1px solid var(--border);">
+                        <div style="font-size:13px;font-weight:700;color:var(--text-2);margin-bottom:8px;">Registered Faces (${Object.keys(faceDescriptorsMap).length}/${app.staff.length})</div>
+                        ${app.staff.map(s => {
+                            const has = !!faceDescriptorsMap[s.id];
+                            return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);">
+                                <span style="font-size:14px;font-weight:600;">${s.name}</span>
+                                ${has
+                                    ? `<span class="face-badge registered">✅ Registered</span>`
+                                    : `<span class="face-badge none">❌ Not Registered</span>`}
+                            </div>`;
+                        }).join('')}
+                        ${app.staff.length === 0 ? '<div style="color:var(--text-3);font-size:13px;">No staff added yet.</div>' : ''}
+                    </div>
+                    <button class="btn-primary btn-sm" onclick="saveFaceThreshold()">💾 Save Threshold</button>
+                    <div id="face-threshold-msg" class="msg" style="display:none;margin-top:12px;"></div>
+                </div>
+
                 <!-- Telegram -->
                 <div class="card">
                     <div class="section-title">📬 Telegram Notifications</div>
@@ -1963,6 +2471,33 @@
             showMsg('telegram-msg','✅ Telegram settings saved!','ok');
         }
 
+        function savePhotoSettings() {
+            const cap = document.getElementById('photo-capture-enabled')?.checked ?? true;
+            const send = document.getElementById('photo-send-telegram')?.checked ?? true;
+            app.settings.photoCapture = { captureEnabled: cap, sendViaTelegram: send };
+            saveData();
+            showMsg('photo-settings-msg', '✅ Photo settings saved!', 'ok');
+        }
+
+        function saveFaceThreshold() {
+            const v = document.getElementById('face-threshold-range')?.value;
+            if (!v) return;
+            app.settings.faceThreshold = 1 - (parseInt(v) / 100);
+            saveData();
+            showMsg('face-threshold-msg', '✅ Sensitivity saved!', 'ok');
+            setTimeout(() => render(), 1200);
+        }
+
+        function photoSettingToggle(id, rowEl) {
+            const cb = document.getElementById(id);
+            cb.checked = !cb.checked;
+            const on = cb.checked;
+            const slider = rowEl.querySelector('div[onclick]');
+            slider.style.background = on ? 'var(--green)' : '#cbd5e1';
+            slider.querySelector('div').style.cssText = `position:absolute;top:2px;${on?'right:2px;':'left:2px;'}width:20px;height:20px;border-radius:50%;background:white;box-shadow:0 1px 3px rgba(0,0,0,.3);`;
+            rowEl.style.background = on ? '#f0fdf4' : 'var(--surface-2)';
+            rowEl.style.borderColor = on ? 'var(--green)' : 'var(--border)';
+        }
         async function sendTelegramPhoto(caption, photoData) {
             const tg = app.settings.telegram;
             if (!tg || !tg.enabled || !photoData) return;
@@ -2035,7 +2570,10 @@
         });
 
         loadData();
+        loadFaceDescriptors();
         loadAuthorizedDevices();
+        // Pre-load face models silently in background after page settles
+        setTimeout(() => loadFaceModels(), 4000);
         render();
         updateAdminStatus();
         updateDeviceActivity();
