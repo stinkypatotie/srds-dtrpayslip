@@ -20,9 +20,7 @@
     <!-- Web App Manifest (inline data URI) -->
     <link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%22Sir%20Ramos%20Drugstore%20DTR%22%2C%22short_name%22%3A%22Ramos%20DTR%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%231a2332%22%2C%22theme_color%22%3A%22%221a2332%22%2C%22orientation%22%3A%22portrait%22%7D">
 
-    <!-- Firebase SDK -->
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <!-- Firebase loaded dynamically in JS for reliable error handling -->
 
 
     <style>
@@ -794,12 +792,12 @@
         };
 
         let db = null, isFirebaseInitialized = false;
+        let currentFirebaseUid = null;
         let currentEditingStaffId = null, pendingClockOut = null;
 
         // ═══════════════════════════════════════════════
         // FACE RECOGNITION STATE
         // ═══════════════════════════════════════════════
-        const FACE_MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights';
         let faceApiLoaded = false;
         let faceApiLoading = false;
         let faceDescriptorsMap = {};   // staffId -> Float32Array(128)
@@ -810,15 +808,53 @@
         let pendingFaceAction = null;  // 'in' | 'out'
         let enrollingStaffId = null;
 
+        // Try multiple CDNs in order until one succeeds
+        const FACEAPI_CDNS = [
+            'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js',
+            'https://unpkg.com/face-api.js@0.22.2/dist/face-api.min.js',
+            'https://cdnjs.cloudflare.com/ajax/libs/face-api.js/0.22.2/face-api.min.js'
+        ];
+
+        // Multiple model weight sources in order of reliability
+        const FACEAPI_MODEL_SOURCES = [
+            'https://justadudewhohacks.github.io/face-api.js/weights',
+            'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights',
+            'https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights'
+        ];
+
+        function tryLoadScript(url) {
+            return new Promise((resolve, reject) => {
+                const s = document.createElement('script');
+                s.src = url;
+                s.onload  = () => resolve(url);
+                s.onerror = () => reject(new Error('Failed: ' + url));
+                document.head.appendChild(s);
+            });
+        }
+
         async function loadFaceApiScript() {
             if (typeof faceapi !== 'undefined') return true;
-            return new Promise((resolve) => {
-                const script = document.createElement('script');
-                script.src = 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js';
-                script.onload  = () => resolve(true);
-                script.onerror = () => { console.error('face-api.js CDN failed'); resolve(false); };
-                document.head.appendChild(script);
-            });
+            for (const cdn of FACEAPI_CDNS) {
+                try {
+                    await tryLoadScript(cdn);
+                    if (typeof faceapi !== 'undefined') {
+                        console.log('✅ face-api.js loaded from:', cdn);
+                        return true;
+                    }
+                } catch(e) {
+                    console.warn('CDN failed, trying next:', cdn);
+                }
+            }
+            console.error('❌ All face-api.js CDNs failed');
+            return false;
+        }
+
+        async function tryLoadModels(modelsUrl) {
+            await Promise.all([
+                faceapi.nets.ssdMobilenetv1.loadFromUri(modelsUrl),
+                faceapi.nets.faceLandmark68Net.loadFromUri(modelsUrl),
+                faceapi.nets.faceRecognitionNet.loadFromUri(modelsUrl)
+            ]);
         }
 
         async function loadFaceModels() {
@@ -833,13 +869,23 @@
                     faceApiLoading = false;
                     return false;
                 }
-                await Promise.all([
-                    faceapi.nets.ssdMobilenetv1.loadFromUri(FACE_MODELS_URL),
-                    faceapi.nets.faceLandmark68Net.loadFromUri(FACE_MODELS_URL),
-                    faceapi.nets.faceRecognitionNet.loadFromUri(FACE_MODELS_URL)
-                ]);
-                faceApiLoaded = true;
-            } catch(e) { console.error('Face models failed:', e); }
+                // Try each model source until one works
+                let modelsLoaded = false;
+                for (const src of FACEAPI_MODEL_SOURCES) {
+                    try {
+                        await tryLoadModels(src);
+                        console.log('✅ Face models loaded from:', src);
+                        modelsLoaded = true;
+                        break;
+                    } catch(e) {
+                        console.warn('Model source failed, trying next:', src);
+                    }
+                }
+                if (modelsLoaded) faceApiLoaded = true;
+                else console.error('❌ All face model sources failed');
+            } catch(e) {
+                console.error('Face models failed:', e);
+            }
             faceApiLoading = false;
             return faceApiLoaded;
         }
@@ -1100,11 +1146,7 @@
         }
 
 
-        try {
-            firebase.initializeApp(firebaseConfig);
-            db = firebase.database();
-            isFirebaseInitialized = true;
-        } catch(e) { console.error('Firebase init failed:', e); }
+        // App startup runs at bottom of script after all declarations
 
         // ═══════════════════════════════════════════════
         // DEVICE ID
@@ -2153,23 +2195,116 @@
         function renderDevices() {
             if (!app.adminMode) return adminRequired();
             const authed = authorizedDevices.some(d=>d.id===deviceId);
+            const fbOk = isFirebaseInitialized;
+            const uid = currentFirebaseUid;
             return `
                 <div class="page-title">🔐 Devices</div>
+
+                <!-- Firebase Connection & UID -->
                 <div class="card">
-                    <div class="alert ${authed?'alert-green':'alert-red'}" style="margin-bottom:14px;">
-                        <strong>${authed?'✅ This device is authorized':'❌ This device is not authorized'}</strong><br>
-                        <small style="word-break:break-all;">ID: ${deviceId}</small>
+                    <div class="section-title">🔥 Firebase Connection</div>
+                    <div class="alert ${fbOk?'alert-green':'alert-red'}" style="margin-bottom:14px;">
+                        <strong>${fbOk?'✅ Connected to Firebase':'❌ Not connected — running offline'}</strong><br>
+                        <small>${fbOk?firebaseConfig.projectId:'Data is saving to localStorage only'}</small>
                     </div>
+
+                    <!-- Firebase UID -->
+                    <div style="background:var(--surface-2);border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px;margin-bottom:14px;">
+                        <div style="font-size:12px;font-weight:700;color:var(--text-2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">👤 Firebase UID — This Device</div>
+                        ${uid ? `
+                        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                            <code id="uid-display" style="font-size:13px;font-weight:700;color:var(--navy);background:var(--surface-3);padding:8px 12px;border-radius:var(--radius-sm);word-break:break-all;flex:1;border:1px solid var(--border);">${uid}</code>
+                            <button class="btn-info btn-sm" onclick="copyUid()" style="flex-shrink:0;white-space:nowrap;">📋 Copy UID</button>
+                        </div>
+                        <div id="uid-copy-msg" style="display:none;font-size:12px;color:var(--green-dark);font-weight:600;margin-top:6px;">✅ Copied to clipboard!</div>
+                        <div style="margin-top:10px;padding:10px 12px;background:#fffbeb;border-radius:var(--radius-sm);border-left:3px solid var(--amber);">
+                            <div style="font-size:12px;font-weight:700;color:#92400e;margin-bottom:4px;">📌 Add this UID to Firebase Security Rules</div>
+                            <div style="font-size:12px;color:#92400e;line-height:1.6;">Go to Firebase Console → Realtime Database → <strong>Data</strong> → create node:<br>
+                            <code style="background:rgba(0,0,0,.06);padding:2px 6px;border-radius:4px;">allowedUids / ${uid} / true</code></div>
+                        </div>
+                        ` : `
+                        <div style="display:flex;align-items:center;gap:10px;">
+                            <div style="font-size:13px;color:var(--red);font-weight:600;">❌ No UID — Firebase sign-in failed on this device</div>
+                            <button class="btn-info btn-sm" onclick="retryFirebaseAuth()">🔄 Retry</button>
+                        </div>
+                        <div style="margin-top:10px;padding:10px 12px;background:#fef2f2;border-radius:var(--radius-sm);border-left:3px solid var(--red);">
+                            <div style="font-size:12px;color:#991b1b;font-weight:600;">Possible causes:</div>
+                            <div style="font-size:12px;color:#991b1b;line-height:1.8;margin-top:2px;">
+                                • Anonymous Auth not enabled in Firebase Console<br>
+                                • No internet connection on this device<br>
+                                • Firebase CDN blocked by network/browser
+                            </div>
+                        </div>
+                        `}
+                    </div>
+
                     <div style="display:flex;gap:10px;flex-wrap:wrap;">
                         <button class="btn-primary btn-sm" onclick="authDevice()">✅ Authorize This Device</button>
                         <button class="btn-info btn-sm" onclick="loadAuthorizedDevices();render()">🔄 Refresh</button>
                     </div>
                 </div>
+
+                <!-- Device Authorization Status -->
+                <div class="card">
+                    <div class="section-title">📱 This Device</div>
+                    <div class="alert ${authed?'alert-green':'alert-amber'}" style="margin-bottom:0;">
+                        <strong>${authed?'✅ Authorized for clock in/out':'⚠️ Not yet authorized for clock in/out'}</strong><br>
+                        <small style="word-break:break-all;">App Device ID: ${deviceId}</small>
+                    </div>
+                </div>
+
+                <!-- All Devices -->
                 <div style="font-size:13px;font-weight:700;color:var(--text-2);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;">Authorized Devices (${authorizedDevices.length})</div>
-                ${authorizedDevices.length===0?`<div class="card" style="text-align:center;color:var(--text-3);padding:32px;">No devices authorized</div>`:authorizedDevices.map(d=>{const isCur=d.id===deviceId;return`<div class="staff-item" style="${isCur?'border-left:4px solid var(--green);':''}">
-                    <div><div class="staff-name">${d.name||'Unnamed Device'}${isCur?` <span class="badge badge-green">This Device</span>`:''}</div><div class="staff-meta" style="font-size:11px;word-break:break-all;">Last active: ${d.lastActive?new Date(d.lastActive).toLocaleString():'Never'}</div></div>
-                    ${!isCur?`<button class="btn-danger btn-sm" onclick="removeDevice('${d.id}')">Remove</button>`:''}
-                </div>`;}).join('')}`;
+                ${authorizedDevices.length===0
+                    ? `<div class="card" style="text-align:center;color:var(--text-3);padding:32px;">No devices authorized yet</div>`
+                    : authorizedDevices.map(d => {
+                        const isCur = d.id === deviceId;
+                        return `<div class="staff-item" style="${isCur?'border-left:4px solid var(--green);':''}">
+                            <div>
+                                <div class="staff-name">${d.name||'Unnamed Device'}${isCur?` <span class="badge badge-green">This Device</span>`:''}</div>
+                                <div class="staff-meta" style="font-size:11px;word-break:break-all;">Last active: ${d.lastActive?new Date(d.lastActive).toLocaleString():'Never'}</div>
+                            </div>
+                            ${!isCur?`<button class="btn-danger btn-sm" onclick="removeDevice('${d.id}')">Remove</button>`:''}
+                        </div>`;
+                    }).join('')}`;
+        }
+
+        function copyUid() {
+            const uid = currentFirebaseUid;
+            if (!uid) return;
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(uid).then(() => {
+                    const msg = document.getElementById('uid-copy-msg');
+                    if (msg) { msg.style.display = 'block'; setTimeout(() => msg.style.display = 'none', 2500); }
+                }).catch(() => fallbackCopyUid(uid));
+            } else {
+                fallbackCopyUid(uid);
+            }
+        }
+
+        function fallbackCopyUid(uid) {
+            // Fallback for older Android browsers
+            const el = document.getElementById('uid-display');
+            const range = document.createRange();
+            range.selectNode(el);
+            window.getSelection().removeAllRanges();
+            window.getSelection().addRange(range);
+            try {
+                document.execCommand('copy');
+                window.getSelection().removeAllRanges();
+                const msg = document.getElementById('uid-copy-msg');
+                if (msg) { msg.style.display = 'block'; setTimeout(() => msg.style.display = 'none', 2500); }
+            } catch(e) {
+                alert('Copy failed. Please select and copy the UID manually.');
+            }
+        }
+
+        function retryFirebaseAuth() {
+            if (!isFirebaseInitialized) { alert('Firebase is not connected on this device.'); return; }
+            firebase.auth().signInAnonymously().then(uc => {
+                currentFirebaseUid = uc.user.uid;
+                render();
+            }).catch(e => alert('Auth failed: ' + e.message));
         }
 
         function quickAuthDevice() {
@@ -2562,21 +2697,61 @@
         }
 
         // ═══════════════════════════════════════════════
-        // KEYBOARD / INIT
+        // APP STARTUP
+        // window.onload fires after ALL scripts/resources are fully loaded
+        // — guaranteed that firebase, faceapi etc. are available
         // ═══════════════════════════════════════════════
-        document.addEventListener('DOMContentLoaded', () => {
-            const p=document.getElementById('admin-password');
-            if(p) p.addEventListener('keypress', e=>{if(e.key==='Enter')verifyPassword();});
-        });
+        function startApp() {
+            loadData();
+            loadFaceDescriptors();
+            loadAuthorizedDevices();
+            render();
+            updateAdminStatus();
+            updateDeviceActivity();
+            setTimeout(() => loadFaceModels(), 4000);
+        }
 
-        loadData();
-        loadFaceDescriptors();
-        loadAuthorizedDevices();
-        // Pre-load face models silently in background after page settles
-        setTimeout(() => loadFaceModels(), 4000);
-        render();
-        updateAdminStatus();
-        updateDeviceActivity();
+        window.addEventListener('load', () => {
+            // Keyboard shortcut for admin password field
+            const p = document.getElementById('admin-password');
+            if (p) p.addEventListener('keypress', e => { if (e.key === 'Enter') verifyPassword(); });
+
+            // Load Firebase scripts dynamically in sequence so we can
+            // catch network failures and fall back to localStorage gracefully
+            function loadScript(src) {
+                return new Promise((resolve, reject) => {
+                    const s = document.createElement('script');
+                    s.src = src;
+                    s.onload  = () => resolve();
+                    s.onerror = () => reject(new Error('Failed to load: ' + src));
+                    document.head.appendChild(s);
+                });
+            }
+
+            const FIREBASE_VER = '9.22.0';
+            const FB_BASE = 'https://www.gstatic.com/firebasejs/' + FIREBASE_VER;
+
+            loadScript(FB_BASE + '/firebase-app-compat.js')
+                .then(() => loadScript(FB_BASE + '/firebase-database-compat.js'))
+                .then(() => loadScript(FB_BASE + '/firebase-auth-compat.js'))
+                .then(() => {
+                    // All Firebase SDKs loaded — now init safely
+                    firebase.initializeApp(firebaseConfig);
+                    db = firebase.database();
+                    return firebase.auth().signInAnonymously();
+                })
+                .then((userCredential) => {
+                    isFirebaseInitialized = true;
+                    currentFirebaseUid = userCredential.user.uid;
+                    console.log('✅ Firebase ready. UID:', userCredential.user.uid);
+                    startApp();
+                })
+                .catch(e => {
+                    // Any step failed (network down, auth error, etc.)
+                    console.warn('Firebase unavailable, running offline:', e.message);
+                    startApp(); // app still works with localStorage
+                });
+        });
 
         // Clock ticker & midnight refresh
         let lastDate = today();
