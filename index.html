@@ -1270,7 +1270,9 @@
         function saveData() {
             const data = { staff: app.staff, records: app.records, deductions: app.deductions, settings: app.settings };
             if (isFirebaseInitialized) {
-                db.ref().set(data).then(() => {
+                // Use update() instead of set() to avoid overwriting other nodes
+                // like allowedUids, devices, etc. that are managed separately
+                db.ref().update(data).then(() => {
                     ['staff','records','deductions','settings'].forEach(k => localStorage.setItem(k, JSON.stringify(app[k])));
                 }).catch(() => {
                     ['staff','records','deductions','settings'].forEach(k => localStorage.setItem(k, JSON.stringify(app[k])));
