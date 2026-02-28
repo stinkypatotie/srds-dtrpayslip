@@ -1766,7 +1766,16 @@
             if (isFirebaseInitialized) {
                 db.ref('records').once('value').then(snap => {
                     const data = snap.val();
-                    if (data) app.records = Array.isArray(data) ? data : Object.values(data);
+                    if (data) {
+                        const fbRecords = Array.isArray(data) ? data : Object.values(data);
+                        // Merge: keep Firebase records as the base, but preserve any local
+                        // records that haven't synced yet (e.g. a recent clock-in that
+                        // was saved to localStorage but whose Firebase write is still pending)
+                        const localOnly = app.records.filter(lr =>
+                            !fbRecords.some(fr => fr.sid == lr.sid && fr.date === lr.date)
+                        );
+                        app.records = [...fbRecords, ...localOnly];
+                    }
                     doCheck();
                 }).catch(() => doCheck());
             } else {
