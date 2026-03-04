@@ -1242,7 +1242,7 @@
                 photoCapture: { captureEnabled: true, sendViaTelegram: true },
                 faceThreshold: 0.5
             },
-            start: '', end: '', view: 'clock', editingRecord: null, adminMode: false
+            start: '', end: '', view: 'clock', viewStaff: '', editingRecord: null, adminMode: false
         };
 
         const RATES = { regular: { daily: 650, ot: 68 }, senior: { daily: 700, ot: 73 }, trainee: { daily: 500, ot: 53 } };
@@ -1849,7 +1849,7 @@
                 <div class="page-title">📋 View DTR</div>
                 <div class="card">
                     <div class="form-grid">
-                        <div class="form-group"><label>Staff</label><select id="view-staff" onchange="render()"><option value="">All Staff</option>${app.staff.map(s=>`<option value="${s.id}">${s.name}</option>`).join('')}</select></div>
+                        <div class="form-group"><label>Staff</label><select id="view-staff" onchange="app.viewStaff=this.value;render()"><option value="">All Staff</option>${app.staff.map(s=>`<option value="${s.id}" ${app.viewStaff==s.id?'selected':''} >${s.name}</option>`).join('')}</select></div>
                         <div class="form-group"><label>Start Date</label><input type="date" id="view-start" value="${app.start}" onchange="app.start=this.value;render()"></div>
                         <div class="form-group"><label>End Date</label><input type="date" id="view-end" value="${app.end}" onchange="app.end=this.value;render()"></div>
                     </div>
@@ -1905,7 +1905,7 @@
         }
 
         function renderDTRTable() {
-            const sf=document.getElementById('view-staff')?.value||'';
+            const sf=app.viewStaff||'';
             let f=app.records;
             if(sf) f=f.filter(r=>r.sid===sf);
             if(app.start) f=f.filter(r=>r.date>=app.start);
