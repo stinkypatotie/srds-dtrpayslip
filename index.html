@@ -1269,16 +1269,13 @@
         // ═══════════════════════════════════════════════
         function saveData() {
             const data = { staff: app.staff, records: app.records, deductions: app.deductions, settings: app.settings };
+            // Always write to localStorage immediately (synchronously) so data is
+            // never lost if the page closes before the async Firebase write completes.
+            ['staff','records','deductions','settings'].forEach(k => localStorage.setItem(k, JSON.stringify(app[k])));
             if (isFirebaseInitialized) {
                 // Use update() instead of set() to avoid overwriting other nodes
                 // like allowedUids, devices, etc. that are managed separately
-                db.ref().update(data).then(() => {
-                    ['staff','records','deductions','settings'].forEach(k => localStorage.setItem(k, JSON.stringify(app[k])));
-                }).catch(() => {
-                    ['staff','records','deductions','settings'].forEach(k => localStorage.setItem(k, JSON.stringify(app[k])));
-                });
-            } else {
-                ['staff','records','deductions','settings'].forEach(k => localStorage.setItem(k, JSON.stringify(app[k])));
+                db.ref().update(data).catch(e => console.warn('Firebase saveData failed:', e.message));
             }
         }
 
