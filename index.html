@@ -648,12 +648,47 @@
 
     <!-- ─── EDIT EMPLOYEE MODAL ──────────────────────────────── -->
     <div id="edit-modal" class="modal" style="display:none;">
-        <div class="modal-content">
+        <div class="modal-content" style="max-height:90vh;overflow-y:auto;">
             <div class="modal-drag"></div>
             <div class="modal-title">✏️ Edit Employee</div>
-            <div class="form-group" style="margin-bottom:12px;"><label>Full Name</label><input type="text" id="edit-name"></div>
-            <div class="form-group" style="margin-bottom:12px;"><label>Position</label><select id="edit-position"><option value="regular">Regular Staff</option><option value="senior">Senior Staff</option><option value="trainee">Trainee</option></select></div>
-            <div class="form-group" style="margin-bottom:16px;"><label>PIN Code</label><input type="password" id="edit-pin" maxlength="4" inputmode="numeric"></div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+                <div class="form-group"><label>Full Name</label><input type="text" id="edit-name" oninput="autoFillEditEmpNum()"></div>
+                <div class="form-group"><label>Employee No.</label><input type="text" id="edit-empnum" placeholder="Auto-generated" readonly style="background:var(--surface-3);color:var(--text-2);"></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+                <div class="form-group"><label>Position</label>
+                    <select id="edit-position" onchange="autoFillEditRates()">
+                        <option value="regular">Regular</option>
+                        <option value="senior">Senior</option>
+                        <option value="trainee">Trainee</option>
+                    </select>
+                </div>
+                <div class="form-group"><label>PIN Code</label><input type="password" id="edit-pin" maxlength="4" inputmode="numeric"></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+                <div class="form-group"><label>Daily Rate (₱)</label><input type="number" id="edit-daily-rate" readonly style="background:var(--surface-3);color:var(--text-2);"></div>
+                <div class="form-group"><label>OT Rate (₱/hr)</label><input type="number" id="edit-ot-rate" readonly style="background:var(--surface-3);color:var(--text-2);"></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+                <div class="form-group"><label>Joining Date</label><input type="date" id="edit-joining-date" oninput="autoFillEditRegDate()"></div>
+                <div class="form-group"><label>Regularization Date</label><input type="date" id="edit-reg-date" readonly style="background:var(--surface-3);color:var(--text-2);"></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+                <div class="form-group"><label>Birthday</label><input type="date" id="edit-birthday" oninput="autoFillEditBirthday()"></div>
+                <div class="form-group"><label>Contact Number</label><input type="tel" id="edit-contact" placeholder="09xx-xxx-xxxx"></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+                <div class="form-group"><label>Status</label>
+                    <select id="edit-status" onchange="toggleEditTermDate()">
+                        <option value="onboard">On-Board</option>
+                        <option value="resigned">Resigned</option>
+                        <option value="terminated">Terminated</option>
+                    </select>
+                </div>
+                <div class="form-group" id="edit-term-date-group"><label>Resignation/Termination Date</label><input type="date" id="edit-term-date"></div>
+            </div>
+
             <div id="edit-msg" class="msg" style="display:none;"></div>
             <div style="display:flex;gap:10px;margin-top:16px;">
                 <button class="btn-primary" onclick="saveEmployeeUpdate()" style="flex:1;">Save Changes</button>
@@ -1453,18 +1488,47 @@
             const s = app.staff.find(x => x.id===staffId); if(!s) return;
             currentEditingStaffId = staffId;
             document.getElementById('edit-name').value = s.name;
+            document.getElementById('edit-empnum').value = s.employeeNumber || generateEmployeeNumber(s.name, s.birthday);
             document.getElementById('edit-position').value = s.position;
             document.getElementById('edit-pin').value = s.pin;
+            document.getElementById('edit-daily-rate').value = s.dailyRate || RATES[s.position].daily;
+            document.getElementById('edit-ot-rate').value = s.otRate || RATES[s.position].ot;
+            document.getElementById('edit-joining-date').value = s.joiningDate || '';
+            document.getElementById('edit-reg-date').value = s.regularizationDate || '';
+            document.getElementById('edit-birthday').value = s.birthday || '';
+            document.getElementById('edit-contact').value = s.contactNumber || '';
+            document.getElementById('edit-status').value = s.status || 'onboard';
+            document.getElementById('edit-term-date').value = s.terminationDate || '';
+            const tdg = document.getElementById('edit-term-date-group');
+            tdg.style.display = (s.status === 'resigned' || s.status === 'terminated') ? '' : 'none';
             document.getElementById('edit-modal').style.display = 'flex';
         }
         function closeEditModal() { document.getElementById('edit-modal').style.display='none'; currentEditingStaffId=null; document.getElementById('edit-msg').style.display='none'; }
         function saveEmployeeUpdate() {
             if (!currentEditingStaffId) return;
-            const name=document.getElementById('edit-name').value.trim(), position=document.getElementById('edit-position').value, pin=document.getElementById('edit-pin').value.trim();
-            if (!name||!pin) { showMsg('edit-msg','❌ Fill all fields','err'); return; }
+            const name=document.getElementById('edit-name').value.trim();
+            const position=document.getElementById('edit-position').value;
+            const pin=document.getElementById('edit-pin').value.trim();
+            const joiningDate=document.getElementById('edit-joining-date').value;
+            const birthday=document.getElementById('edit-birthday').value;
+            const contactNumber=document.getElementById('edit-contact').value.trim();
+            const status=document.getElementById('edit-status').value;
+            const terminationDate=document.getElementById('edit-term-date').value;
+            if (!name||!pin) { showMsg('edit-msg','❌ Fill Name and PIN fields','err'); return; }
             if (!/^\d{4}$/.test(pin)) { showMsg('edit-msg','❌ PIN must be 4 digits','err'); return; }
+            const employeeNumber = generateEmployeeNumber(name, birthday);
+            const regularizationDate = calcRegularizationDate(joiningDate);
+            const dailyRate = RATES[position].daily;
+            const otRate = RATES[position].ot;
             const s=app.staff.find(x=>x.id===currentEditingStaffId);
-            if (s) { s.name=name; s.position=position; s.pin=pin; saveData(); closeEditModal(); render(); }
+            if (s) {
+                s.name=name; s.position=position; s.pin=pin;
+                s.employeeNumber=employeeNumber; s.joiningDate=joiningDate; s.birthday=birthday;
+                s.contactNumber=contactNumber; s.dailyRate=dailyRate; s.otRate=otRate;
+                s.regularizationDate=regularizationDate; s.status=status||'onboard';
+                s.terminationDate=terminationDate||'';
+                saveData(); closeEditModal(); render();
+            }
         }
 
         // ═══════════════════════════════════════════════
@@ -2101,42 +2165,130 @@
         // ═══════════════════════════════════════════════
         // STAFF
         // ═══════════════════════════════════════════════
+        function generateEmployeeNumber(name, birthday) {
+            const parts = name.trim().split(/\s+/).filter(Boolean);
+            let initials = '';
+            if (parts.length === 0) return '';
+            if (parts.length === 1) initials = parts[0][0].toUpperCase();
+            else initials = (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+            if (!birthday) return initials;
+            // birthday is YYYY-MM-DD → extract DD, MM, YY
+            const [yyyy, mm, dd] = birthday.split('-');
+            if (!yyyy || !mm || !dd) return initials;
+            return initials + dd + mm + yyyy.slice(2);
+        }
+        function calcRegularizationDate(joiningDate) {
+            if (!joiningDate) return '';
+            const d = new Date(joiningDate + 'T00:00:00');
+            d.setMonth(d.getMonth() + 3);
+            return d.toISOString().split('T')[0];
+        }
+        function statusBadge(status) {
+            if (!status || status === 'onboard') return `<span class="badge badge-green">On-Board</span>`;
+            if (status === 'resigned') return `<span class="badge badge-amber">Resigned</span>`;
+            if (status === 'terminated') return `<span class="badge badge-red">Terminated</span>`;
+            return '';
+        }
+        function fmtDatePH(d) {
+            if (!d) return '—';
+            const dt = new Date(d + 'T00:00:00');
+            return dt.toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' });
+        }
         function renderStaff() {
             if (!app.adminMode) return adminRequired();
             return `
                 <div class="page-title">👥 Staff</div>
                 <div class="card">
-                    <div class="section-title">➕ Add Staff</div>
+                    <div class="section-title">➕ Add Employee</div>
                     <div class="form-grid">
-                        <div class="form-group"><label>Full Name</label><input type="text" id="new-name" placeholder="Enter full name" autocorrect="off"></div>
-                        <div class="form-group"><label>Position</label><select id="new-position"><option value="regular">Regular (₱650/day)</option><option value="senior">Senior (₱700/day)</option><option value="trainee">Trainee (₱500/day)</option></select></div>
+                        <div class="form-group"><label>Full Name</label><input type="text" id="new-name" placeholder="First Last Name" autocorrect="off" oninput="autoFillNewEmpNum()"></div>
+                        <div class="form-group"><label>Employee No. <span style="font-size:11px;color:var(--text-3)">(auto)</span></label><input type="text" id="new-empnum" placeholder="Auto-generated" readonly style="background:var(--surface-3);color:var(--text-2);"></div>
+                        <div class="form-group"><label>Position</label>
+                            <select id="new-position" onchange="autoFillNewRates()">
+                                <option value="regular">Regular (₱650/day)</option>
+                                <option value="senior">Senior (₱700/day)</option>
+                                <option value="trainee">Trainee (₱500/day)</option>
+                            </select>
+                        </div>
                         <div class="form-group"><label>PIN (4 digits)</label><input type="password" id="new-pin" placeholder="1234" maxlength="4" inputmode="numeric"></div>
+                        <div class="form-group"><label>Daily Rate (₱)</label><input type="number" id="new-daily-rate" value="${RATES.regular.daily}" readonly style="background:var(--surface-3);color:var(--text-2);"></div>
+                        <div class="form-group"><label>OT Rate (₱/hr)</label><input type="number" id="new-ot-rate" value="${RATES.regular.ot}" readonly style="background:var(--surface-3);color:var(--text-2);"></div>
+                        <div class="form-group"><label>Joining Date</label><input type="date" id="new-joining-date" oninput="autoFillNewRegDate()"></div>
+                        <div class="form-group"><label>Regularization Date <span style="font-size:11px;color:var(--text-3)">(auto)</span></label><input type="date" id="new-reg-date" readonly style="background:var(--surface-3);color:var(--text-2);"></div>
+                        <div class="form-group"><label>Birthday</label><input type="date" id="new-birthday" oninput="autoFillNewBirthday()"></div>
+                        <div class="form-group"><label>Contact Number</label><input type="tel" id="new-contact" placeholder="09xx-xxx-xxxx"></div>
+                        <div class="form-group"><label>Status</label>
+                            <select id="new-status" onchange="toggleNewTermDate()">
+                                <option value="onboard">On-Board</option>
+                                <option value="resigned">Resigned</option>
+                                <option value="terminated">Terminated</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="new-term-date-group" style="display:none;"><label>Resignation/Termination Date</label><input type="date" id="new-term-date"></div>
                     </div>
-                    <button class="btn-primary btn-sm" onclick="addStaff()" style="margin-top:12px;">💾 Add Staff Member</button>
+                    <button class="btn-primary btn-sm" onclick="addStaff()" style="margin-top:12px;">💾 Add Employee</button>
                     <div id="staff-msg" class="msg" style="display:none;"></div>
                 </div>
-                <div style="font-size:13px;font-weight:700;color:var(--text-2);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;">Current Staff (${app.staff.length})</div>
-                ${app.staff.length===0?`<div class="card" style="text-align:center;color:var(--text-3);padding:40px;">No staff yet</div>`:app.staff.map(s=>`<div class="staff-item">
-                    <div>
-                        <div class="staff-name">${s.name}</div>
-                        <div class="staff-meta">${s.position.charAt(0).toUpperCase()+s.position.slice(1)} · ₱${RATES[s.position].daily}/day · ₱${getHourlyRate(s.position).toFixed(2)}/hr</div>
-                    </div>
-                    <div class="action-buttons">
-                        <button class="btn-warning btn-sm" onclick="openEditModal('${s.id}')">✏️</button>
-                        ${faceDescriptorsMap[s.id]
-                            ? `<button class="btn-sm" style="background:#dcfce7;color:var(--green-dark);" onclick="confirmDeleteFace('${s.id}')">👤✅</button>`
-                            : `<button class="btn-info btn-sm" onclick="openFaceEnrollModal('${s.id}')">📸 Face</button>`}
-                        <button class="btn-danger btn-sm" onclick="delStaff('${s.id}')">🗑️</button>
-                    </div>
-                </div>`).join('')}`;
+                <div style="font-size:13px;font-weight:700;color:var(--text-2);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;">Current Employees (${app.staff.length})</div>
+                ${app.staff.length===0?`<div class="card" style="text-align:center;color:var(--text-3);padding:40px;">No employees yet</div>`:app.staff.map(s=>{
+                    const empNum = s.employeeNumber || generateEmployeeNumber(s.name, s.birthday);
+                    const pos = s.position;
+                    const dr = s.dailyRate || RATES[pos].daily;
+                    const otr = s.otRate || RATES[pos].ot;
+                    return `<div class="card" style="padding:16px;margin-bottom:12px;">
+                        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;">
+                            <div>
+                                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
+                                    <span style="font-weight:800;font-size:16px;color:var(--text-1);">${s.name}</span>
+                                    <span style="font-size:12px;font-weight:700;color:var(--text-3);background:var(--surface-3);padding:2px 8px;border-radius:20px;">${empNum}</span>
+                                    ${statusBadge(s.status)}
+                                </div>
+                                <div style="font-size:12px;color:var(--text-2);margin-bottom:8px;">${pos.charAt(0).toUpperCase()+pos.slice(1)} · ₱${dr}/day · ₱${otr}/hr OT</div>
+                                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:4px 16px;">
+                                    ${s.joiningDate?`<div style="font-size:12px;color:var(--text-2);">📅 Joined: <strong>${fmtDatePH(s.joiningDate)}</strong></div>`:''}
+                                    ${s.regularizationDate?`<div style="font-size:12px;color:var(--text-2);">🎓 Regularized: <strong>${fmtDatePH(s.regularizationDate)}</strong></div>`:''}
+                                    ${s.birthday?`<div style="font-size:12px;color:var(--text-2);">🎂 Birthday: <strong>${fmtDatePH(s.birthday)}</strong></div>`:''}
+                                    ${s.contactNumber?`<div style="font-size:12px;color:var(--text-2);">📱 Contact: <strong>${s.contactNumber}</strong></div>`:''}
+                                    ${s.terminationDate?`<div style="font-size:12px;color:var(--text-2);">📌 ${s.status==='resigned'?'Resigned':'Terminated'}: <strong>${fmtDatePH(s.terminationDate)}</strong></div>`:''}
+                                </div>
+                            </div>
+                            <div class="action-buttons" style="flex-shrink:0;">
+                                <button class="btn-warning btn-sm" onclick="openEditModal('${s.id}')">✏️ Edit</button>
+                                ${faceDescriptorsMap[s.id]
+                                    ? `<button class="btn-sm" style="background:#dcfce7;color:var(--green-dark);" onclick="confirmDeleteFace('${s.id}')">👤✅</button>`
+                                    : `<button class="btn-info btn-sm" onclick="openFaceEnrollModal('${s.id}')">📸 Face</button>`}
+                                <button class="btn-danger btn-sm" onclick="delStaff('${s.id}')">🗑️</button>
+                            </div>
+                        </div>
+                    </div>`;
+                }).join('')}`;
         }
 
         function addStaff() {
-            const name=document.getElementById('new-name').value.trim(),position=document.getElementById('new-position').value,pin=document.getElementById('new-pin').value.trim();
-            if(!name||!pin) return showMsg('staff-msg','Fill all fields','err');
+            const name=document.getElementById('new-name').value.trim();
+            const position=document.getElementById('new-position').value;
+            const pin=document.getElementById('new-pin').value.trim();
+            const joiningDate=document.getElementById('new-joining-date').value;
+            const birthday=document.getElementById('new-birthday').value;
+            const contactNumber=document.getElementById('new-contact').value.trim();
+            const status=document.getElementById('new-status').value;
+            const terminationDate=document.getElementById('new-term-date').value;
+            if(!name||!pin) return showMsg('staff-msg','Fill Name and PIN fields','err');
             if(!/^\d{4}$/.test(pin)) return showMsg('staff-msg','PIN must be 4 digits','err');
-            app.staff.push({id:'staff-'+Date.now(),name,position,pin});
-            saveData();document.getElementById('new-name').value='';document.getElementById('new-pin').value='';
+            const employeeNumber = generateEmployeeNumber(name, birthday);
+            const regularizationDate = calcRegularizationDate(joiningDate);
+            const dailyRate = RATES[position].daily;
+            const otRate = RATES[position].ot;
+            app.staff.push({id:'staff-'+Date.now(),name,position,pin,employeeNumber,joiningDate,birthday,contactNumber,dailyRate,otRate,regularizationDate,status:status||'onboard',terminationDate:terminationDate||''});
+            saveData();
+            ['new-name','new-pin','new-joining-date','new-birthday','new-contact','new-term-date'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+            document.getElementById('new-empnum').value='';
+            document.getElementById('new-reg-date').value='';
+            document.getElementById('new-daily-rate').value=RATES.regular.daily;
+            document.getElementById('new-ot-rate').value=RATES.regular.ot;
+            document.getElementById('new-position').value='regular';
+            document.getElementById('new-status').value='onboard';
+            document.getElementById('new-term-date-group').style.display='none';
             showMsg('staff-msg',`✅ ${name} added!`,'ok');setTimeout(render,1500);
         }
 
@@ -2156,6 +2308,62 @@
             if (!confirm('Remove face data for ' + s.name + '?\n\nThey will need to re-register their face.')) return;
             deleteFaceDescriptor(sid);
             render();
+        }
+
+        // ── Auto-fill helpers for Add Employee form ──
+        function autoFillNewEmpNum() {
+            const name = document.getElementById('new-name').value;
+            const bday = document.getElementById('new-birthday').value;
+            const el = document.getElementById('new-empnum');
+            if (el) el.value = generateEmployeeNumber(name, bday);
+        }
+        function autoFillNewBirthday() {
+            autoFillNewEmpNum(); // re-run emp num when birthday changes
+        }
+        function autoFillNewRates() {
+            const pos = document.getElementById('new-position').value;
+            const dr = document.getElementById('new-daily-rate');
+            const otr = document.getElementById('new-ot-rate');
+            if (dr) dr.value = RATES[pos].daily;
+            if (otr) otr.value = RATES[pos].ot;
+        }
+        function autoFillNewRegDate() {
+            const jd = document.getElementById('new-joining-date').value;
+            const rd = document.getElementById('new-reg-date');
+            if (rd) rd.value = calcRegularizationDate(jd);
+        }
+        function toggleNewTermDate() {
+            const status = document.getElementById('new-status').value;
+            const grp = document.getElementById('new-term-date-group');
+            if (grp) grp.style.display = (status === 'resigned' || status === 'terminated') ? '' : 'none';
+        }
+
+        // ── Auto-fill helpers for Edit Employee modal ──
+        function autoFillEditEmpNum() {
+            const name = document.getElementById('edit-name').value;
+            const bday = document.getElementById('edit-birthday').value;
+            const el = document.getElementById('edit-empnum');
+            if (el) el.value = generateEmployeeNumber(name, bday);
+        }
+        function autoFillEditBirthday() {
+            autoFillEditEmpNum(); // re-run emp num when birthday changes
+        }
+        function autoFillEditRates() {
+            const pos = document.getElementById('edit-position').value;
+            const dr = document.getElementById('edit-daily-rate');
+            const otr = document.getElementById('edit-ot-rate');
+            if (dr) dr.value = RATES[pos].daily;
+            if (otr) otr.value = RATES[pos].ot;
+        }
+        function autoFillEditRegDate() {
+            const jd = document.getElementById('edit-joining-date').value;
+            const rd = document.getElementById('edit-reg-date');
+            if (rd) rd.value = calcRegularizationDate(jd);
+        }
+        function toggleEditTermDate() {
+            const status = document.getElementById('edit-status').value;
+            const grp = document.getElementById('edit-term-date-group');
+            if (grp) grp.style.display = (status === 'resigned' || status === 'terminated') ? '' : 'none';
         }
 
         // ═══════════════════════════════════════════════
