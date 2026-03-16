@@ -662,6 +662,7 @@
                         <option value="regular">Regular</option>
                         <option value="senior">Senior</option>
                         <option value="trainee">Trainee</option>
+                        <option value="provisionary">Provisionary</option>
                     </select>
                 </div>
                 <div class="form-group"><label>PIN Code</label><input type="password" id="edit-pin" maxlength="4" inputmode="numeric"></div>
@@ -1280,7 +1281,7 @@
             start: '', end: '', view: 'clock', viewStaff: '', editingRecord: null, adminMode: false
         };
 
-        const RATES = { regular: { daily: 650, ot: 68 }, senior: { daily: 700, ot: 73 }, trainee: { daily: 500, ot: 53 } };
+        const RATES = { regular: { daily: 650, ot: 68 }, senior: { daily: 700, ot: 73 }, trainee: { daily: 500, ot: 53 }, provisionary: { daily: 350, ot: 37 } };
         function getHourlyRate(pos) { return RATES[pos].daily / 12; }
         function roundUp(v) { return Math.ceil(v); }
 
@@ -1706,7 +1707,7 @@
                         <label>Select Staff</label>
                         <select id="staff-sel">
                             <option value="">Choose staff...</option>
-                            ${app.staff.map(s=>`<option value="${s.id}">${s.name}</option>`).join('')}
+                            ${app.staff.filter(s=>!s.status||s.status==='onboard').map(s=>`<option value="${s.id}">${s.name}</option>`).join('')}
                         </select>
                     </div>
                     <div class="form-group" style="margin-bottom:18px;">
@@ -2208,6 +2209,7 @@
                                 <option value="regular">Regular (₱650/day)</option>
                                 <option value="senior">Senior (₱700/day)</option>
                                 <option value="trainee">Trainee (₱500/day)</option>
+                                <option value="provisionary">Provisionary (₱350/day)</option>
                             </select>
                         </div>
                         <div class="form-group"><label>PIN (4 digits)</label><input type="password" id="new-pin" placeholder="1234" maxlength="4" inputmode="numeric"></div>
