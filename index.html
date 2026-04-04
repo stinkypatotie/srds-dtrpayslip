@@ -1278,7 +1278,8 @@
                 photoCapture: { captureEnabled: true, sendViaTelegram: true },
                 faceThreshold: 0.5
             },
-            start: '', end: '', view: 'clock', viewStaff: '', editingRecord: null, adminMode: false
+            start: '', end: '', view: 'clock', viewStaff: '', editingRecord: null, adminMode: false,
+            incentives: {}  // keyed by staffId: { enabled, amount, label }
         };
 
         const RATES = { regular: { daily: 650, ot: 68 }, senior: { daily: 700, ot: 73 }, trainee: { daily: 500, ot: 53 }, provisionary: { daily: 350, ot: 37 } };
@@ -2008,7 +2009,7 @@
                         <div class="form-group"><label>End Date</label><input type="date" id="pay-end" value="${app.end}" onchange="app.end=this.value;render()"></div>
                     </div>
                 </div>
-                ${renderPayrollCards()}`;
+                ${`<div id="payroll-cards-container">${renderPayrollCards()}</div>`}`;
         }
 
         function renderPayrollCards() {
@@ -2020,11 +2021,14 @@
                 const rt=RATES[s.position],hr=getHourlyRate(s.position);
                 const rp=roundUp(fd*rt.daily),pp=roundUp(ph*hr),op=roundUp(oh*rt.ot),gross=rp+pp+op;
                 const dip=app.deductions.filter(d=>{const dd=new Date(d.deductionDate);return d.staffId===s.id&&dd>=new Date(app.start)&&dd<=new Date(app.end)&&d.status==='pending';});
-                const td=roundUp(dip.reduce((sum,d)=>sum+d.amount,0)),net=gross-td;
+                const td=roundUp(dip.reduce((sum,d)=>sum+d.amount,0));
+                const inc=app.incentives[s.id]||{enabled:false,amount:0,label:'Incentive'};
+                const incAmt=inc.enabled?roundUp(parseFloat(inc.amount)||0):0;
+                const net=gross-td+incAmt;
                 return `<div class="card">
                     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;">
                         <div><div class="payroll-name">${s.name}</div><span class="badge badge-blue">${s.position}</span></div>
-                        <div class="payroll-net">₱${net.toLocaleString()}</div>
+                        <div class="payroll-net" id="inc-net-${s.id}">₱${net.toLocaleString()}</div>
                     </div>
                     <div class="payroll-grid">
                         <div class="payroll-line">Full Days: <span>${fd}</span></div>
@@ -2035,6 +2039,17 @@
                         ${op>0?`<div class="payroll-line">OT Pay: <span>₱${op.toLocaleString()}</span></div>`:''}
                         <div class="payroll-line">Gross Pay: <span>₱${gross.toLocaleString()}</span></div>
                         ${td>0?`<div class="payroll-line">Deductions: <span class="payroll-deduct">-₱${td.toLocaleString()}</span></div>`:''}
+                        <div class="payroll-line" id="inc-summary-${s.id}" style="color:var(--green);font-weight:700;display:${incAmt>0?'flex':'none'};">${inc.label||'Incentive'}: <span>+₱${incAmt.toLocaleString()}</span></div>
+                    </div>
+                    <div style="margin:14px 0 10px;padding:12px 14px;background:var(--surface-2);border-radius:var(--radius-sm);border:1.5px solid ${inc.enabled?'var(--green)':'var(--border)'};" id="inc-box-${s.id}">
+                        <div style="display:flex;align-items:center;justify-content:space-between;">
+                            <span style="font-size:13px;font-weight:700;color:var(--text-1);">🎁 Incentive</span>
+                            <button id="inc-toggle-${s.id}" onclick="toggleIncentive('${s.id}')" style="padding:6px 20px;border-radius:20px;border:none;font-size:12px;font-weight:700;cursor:pointer;letter-spacing:.3px;transition:all .15s;background:${inc.enabled?'var(--green)':'var(--surface-3)'};color:${inc.enabled?'white':'var(--text-2)'};">${inc.enabled?'ON ✓':'OFF'}</button>
+                        </div>
+                        <div id="inc-section-${s.id}" style="display:${inc.enabled?'grid':'none'};grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;">
+                            <div class="form-group"><label>Label</label><input type="text" id="inc-lbl-${s.id}" value="${inc.label||'Incentive'}" placeholder="e.g. Performance Bonus" oninput="updateIncentive('${s.id}')" style="padding:9px 12px;font-size:14px;"></div>
+                            <div class="form-group"><label>Amount (₱)</label><input type="number" id="inc-amt-${s.id}" value="${inc.amount||''}" placeholder="0.00" min="0" step="0.01" inputmode="decimal" oninput="updateIncentive('${s.id}')" style="padding:9px 12px;font-size:14px;"></div>
+                        </div>
                     </div>
                     <button class="btn-info btn-sm" onclick="printPayslip('${s.id}')">🖨️ Print Payslip</button>
                 </div>`;
@@ -2050,7 +2065,10 @@
             const rt=RATES[staff.position],hr=getHourlyRate(staff.position);
             const rp=roundUp(fd*rt.daily),pp=roundUp(ph*hr),op=roundUp(oh*rt.ot),gross=rp+pp+op;
             const dip=app.deductions.filter(d=>{const dd=new Date(d.deductionDate);return d.staffId===staffId&&dd>=new Date(app.start)&&dd<=new Date(app.end)&&d.status==='pending';});
-            const td=roundUp(dip.reduce((sum,d)=>sum+d.amount,0)),net=gross-td;
+            const td=roundUp(dip.reduce((sum,d)=>sum+d.amount,0));
+            const inc=app.incentives[staffId]||{enabled:false,amount:0,label:'Incentive'};
+            const incAmt=inc.enabled?roundUp(parseFloat(inc.amount)||0):0;
+            const net=gross-td+incAmt;
             const pw=window.open('','','width=800,height=700');
             pw.document.write(`<!DOCTYPE html><html><head><title>Payslip - ${staff.name}</title><style>*{margin:0;padding:0;box-sizing:border-box;}body{font-family:-apple-system,Arial,sans-serif;padding:40px;background:white;}.payslip{max-width:680px;margin:0 auto;border:2px solid #1a2332;border-radius:12px;overflow:hidden;}.header{background:#1a2332;color:white;padding:28px;text-align:center;}.header h1{font-size:24px;margin-bottom:6px;}.header p{opacity:.7;font-size:14px;}table{width:100%;border-collapse:collapse;}th{background:#f1f5f9;padding:12px;text-align:left;font-size:12px;color:#475569;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid #e2e8f0;}td{padding:12px;border-bottom:1px solid #f1f5f9;font-size:14px;}.total{background:#1a2332;color:white;font-weight:bold;font-size:16px;}.sigs{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin:32px 28px;}.sig-box{text-align:center;}.sig-line{border-top:2px solid #e2e8f0;margin-top:48px;padding-top:10px;font-size:13px;color:#475569;}@media print{.no-print{display:none;}}</style></head>
             <body><div class="payslip"><div class="header"><h1>SIR RAMOS DRUGSTORE</h1><p>PAYSLIP — ${new Date(app.start).toLocaleDateString()} to ${new Date(app.end).toLocaleDateString()}</p></div>
@@ -2062,11 +2080,58 @@
                 <tr><th>Gross Pay</th><td colspan="2"><strong>₱${gross}</strong></td></tr>
                 ${dip.map(d=>`<tr><th style="color:#ef4444;">${d.type==='late'?'⏰ ':''} ${d.reason||'Deduction'}</th><td colspan="2" style="color:#ef4444;">-₱${roundUp(d.amount)}</td></tr>`).join('')}
                 ${td>0?`<tr><th>Total Deductions</th><td colspan="2" style="color:#ef4444;"><strong>-₱${td}</strong></td></tr>`:''}
+                ${incAmt>0?`<tr><th style="color:#16a34a;">🎁 ${inc.label||'Incentive'}</th><td colspan="2" style="color:#16a34a;font-weight:700;">+₱${incAmt}</td></tr>`:''}
                 <tr class="total"><th>NET PAY</th><td colspan="2">₱${net}</td></tr>
             </table>
             <div class="sigs"><div class="sig-box"><div class="sig-line">Employee Signature</div></div><div class="sig-box"><div class="sig-line">Authorized Signature</div></div></div>
             </div><div class="no-print" style="text-align:center;margin-top:24px;"><button onclick="window.print()" style="padding:12px 28px;background:#1a2332;color:white;border:none;border-radius:8px;font-size:15px;cursor:pointer;margin-right:10px;">🖨️ Print</button><button onclick="window.close()" style="padding:12px 28px;background:#e2e8f0;border:none;border-radius:8px;font-size:15px;cursor:pointer;">Close</button></div></body></html>`);
             pw.document.close();
+        }
+
+        // ═══════════════════════════════════════════════
+        // INCENTIVES
+        // ═══════════════════════════════════════════════
+        function toggleIncentive(sid) {
+            if (!app.incentives[sid]) app.incentives[sid] = { enabled: false, amount: 0, label: 'Incentive' };
+            const inc = app.incentives[sid];
+            inc.enabled = !inc.enabled;
+            const on = inc.enabled;
+            const btn = document.getElementById('inc-toggle-'+sid);
+            const box = document.getElementById('inc-box-'+sid);
+            const section = document.getElementById('inc-section-'+sid);
+            if (btn) { btn.textContent = on ? 'ON ✓' : 'OFF'; btn.style.background = on ? 'var(--green)' : 'var(--surface-3)'; btn.style.color = on ? 'white' : 'var(--text-2)'; }
+            if (box) box.style.borderColor = on ? 'var(--green)' : 'var(--border)';
+            if (section) section.style.display = on ? 'grid' : 'none';
+            updateIncentiveDisplay(sid);
+        }
+        function updateIncentive(sid) {
+            const lbl = document.getElementById('inc-lbl-'+sid);
+            const amt = document.getElementById('inc-amt-'+sid);
+            if (!app.incentives[sid]) app.incentives[sid] = { enabled: true, amount: 0, label: 'Incentive' };
+            if (lbl) app.incentives[sid].label = lbl.value;
+            if (amt) app.incentives[sid].amount = parseFloat(amt.value) || 0;
+            updateIncentiveDisplay(sid);
+        }
+        function updateIncentiveDisplay(sid) {
+            const inc = app.incentives[sid] || { enabled: false, amount: 0, label: 'Incentive' };
+            const incAmt = inc.enabled ? roundUp(parseFloat(inc.amount) || 0) : 0;
+            const s = app.staff.find(x => x.id === sid);
+            if (!s || !app.start || !app.end) return;
+            const recs = app.records.filter(r => { const rd = new Date(r.date); return r.sid === sid && rd >= new Date(app.start) && rd <= new Date(app.end); });
+            let fd=0, ph=0, oh=0;
+            recs.forEach(r => { if (!r.status) { const h = calcH(r.in, r.out); if (h >= app.settings.fullShiftHours) { fd++; oh += calcOT(r.out); } else if (h > 0) { ph += h; } } });
+            const rt = RATES[s.position], hr = getHourlyRate(s.position);
+            const rp = roundUp(fd*rt.daily), pp = roundUp(ph*hr), op = roundUp(oh*rt.ot), gross = rp+pp+op;
+            const dip = app.deductions.filter(d => { const dd = new Date(d.deductionDate); return d.staffId === sid && dd >= new Date(app.start) && dd <= new Date(app.end) && d.status === 'pending'; });
+            const td = roundUp(dip.reduce((sum,d) => sum+d.amount, 0));
+            const net = gross - td + incAmt;
+            const netEl = document.getElementById('inc-net-'+sid);
+            if (netEl) netEl.textContent = '₱' + net.toLocaleString();
+            const sumEl = document.getElementById('inc-summary-'+sid);
+            if (sumEl) {
+                sumEl.style.display = incAmt > 0 ? 'flex' : 'none';
+                sumEl.innerHTML = `${inc.label||'Incentive'}: <span>+₱${incAmt.toLocaleString()}</span>`;
+            }
         }
 
         // ═══════════════════════════════════════════════
