@@ -2014,7 +2014,7 @@
 
         function renderPayrollCards() {
             if (!app.start||!app.end) return `<div class="card" style="text-align:center;color:var(--text-3);padding:40px;">Select a date range to calculate payroll</div>`;
-            return app.staff.map(s => {
+            return app.staff.filter(s => !s.status || s.status === 'onboard').map(s => {
                 const recs=app.records.filter(r=>{const rd=new Date(r.date);return r.sid===s.id&&rd>=new Date(app.start)&&rd<=new Date(app.end);});
                 let fd=0,ud=0,uh=0,ph=0,oh=0;
                 recs.forEach(r=>{if(!r.status){const h=calcH(r.in,r.out);if(h>=app.settings.fullShiftHours){fd++;oh+=calcOT(r.out);}else if(h>0){ud++;ph+=h;uh+=(app.settings.fullShiftHours-h);}}});
@@ -2296,39 +2296,24 @@
                     <button class="btn-primary btn-sm" onclick="addStaff()" style="margin-top:12px;">💾 Add Employee</button>
                     <div id="staff-msg" class="msg" style="display:none;"></div>
                 </div>
-                <div style="font-size:13px;font-weight:700;color:var(--text-2);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;">Current Employees (${app.staff.length})</div>
-                ${app.staff.length===0?`<div class="card" style="text-align:center;color:var(--text-3);padding:40px;">No employees yet</div>`:app.staff.map(s=>{
-                    const empNum = s.employeeNumber || generateEmployeeNumber(s.name, s.birthday);
-                    const pos = s.position;
-                    const dr = s.dailyRate || RATES[pos].daily;
-                    const otr = s.otRate || RATES[pos].ot;
-                    return `<div class="card" style="padding:16px;margin-bottom:12px;">
-                        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;">
-                            <div>
-                                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
-                                    <span style="font-weight:800;font-size:16px;color:var(--text-1);">${s.name}</span>
-                                    <span style="font-size:12px;font-weight:700;color:var(--text-3);background:var(--surface-3);padding:2px 8px;border-radius:20px;">${empNum}</span>
-                                    ${statusBadge(s.status)}
-                                </div>
-                                <div style="font-size:12px;color:var(--text-2);margin-bottom:8px;">${pos.charAt(0).toUpperCase()+pos.slice(1)} · ₱${dr}/day · ₱${otr}/hr OT</div>
-                                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:4px 16px;">
-                                    ${s.joiningDate?`<div style="font-size:12px;color:var(--text-2);">📅 Joined: <strong>${fmtDatePH(s.joiningDate)}</strong></div>`:''}
-                                    ${s.regularizationDate?`<div style="font-size:12px;color:var(--text-2);">🎓 Regularized: <strong>${fmtDatePH(s.regularizationDate)}</strong></div>`:''}
-                                    ${s.birthday?`<div style="font-size:12px;color:var(--text-2);">🎂 Birthday: <strong>${fmtDatePH(s.birthday)}</strong></div>`:''}
-                                    ${s.contactNumber?`<div style="font-size:12px;color:var(--text-2);">📱 Contact: <strong>${s.contactNumber}</strong></div>`:''}
-                                    ${s.terminationDate?`<div style="font-size:12px;color:var(--text-2);">📌 ${s.status==='resigned'?'Resigned':'Terminated'}: <strong>${fmtDatePH(s.terminationDate)}</strong></div>`:''}
-                                </div>
-                            </div>
-                            <div class="action-buttons" style="flex-shrink:0;">
-                                <button class="btn-warning btn-sm" onclick="openEditModal('${s.id}')">✏️ Edit</button>
-                                ${faceDescriptorsMap[s.id]
-                                    ? `<button class="btn-sm" style="background:#dcfce7;color:var(--green-dark);" onclick="confirmDeleteFace('${s.id}')">👤✅</button>`
-                                    : `<button class="btn-info btn-sm" onclick="openFaceEnrollModal('${s.id}')">📸 Face</button>`}
-                                <button class="btn-danger btn-sm" onclick="delStaff('${s.id}')">🗑️</button>
-                            </div>
-                        </div>
-                    </div>`;
-                }).join('')}`;
+                ${(()=>{
+                    const onboard = app.staff.filter(s => !s.status || s.status === 'onboard');
+                    const former  = app.staff.filter(s => s.status === 'resigned' || s.status === 'terminated');
+                    const renderStaffCard = s => {
+                        const empNum = s.employeeNumber || generateEmployeeNumber(s.name, s.birthday);
+                        const pos = s.position;
+                        const dr = s.dailyRate || RATES[pos].daily;
+                        const otr = s.otRate || RATES[pos].ot;
+                        return '<div class="card" style="padding:16px;margin-bottom:12px;"><div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;"><div><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;"><span style="font-weight:800;font-size:16px;color:var(--text-1);">'+s.name+'</span><span style="font-size:12px;font-weight:700;color:var(--text-3);background:var(--surface-3);padding:2px 8px;border-radius:20px;">'+empNum+'</span>'+statusBadge(s.status)+'</div><div style="font-size:12px;color:var(--text-2);margin-bottom:8px;">'+pos.charAt(0).toUpperCase()+pos.slice(1)+' · ₱'+dr+'/day · ₱'+otr+'/hr OT</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:4px 16px;">'+(s.joiningDate?'<div style="font-size:12px;color:var(--text-2);">📅 Joined: <strong>'+fmtDatePH(s.joiningDate)+'</strong></div>':'')+(s.regularizationDate?'<div style="font-size:12px;color:var(--text-2);">🎓 Regularized: <strong>'+fmtDatePH(s.regularizationDate)+'</strong></div>':'')+(s.birthday?'<div style="font-size:12px;color:var(--text-2);">🎂 Birthday: <strong>'+fmtDatePH(s.birthday)+'</strong></div>':'')+(s.contactNumber?'<div style="font-size:12px;color:var(--text-2);">📱 Contact: <strong>'+s.contactNumber+'</strong></div>':'')+(s.terminationDate?'<div style="font-size:12px;color:var(--text-2);">📌 '+(s.status==='resigned'?'Resigned':'Terminated')+': <strong>'+fmtDatePH(s.terminationDate)+'</strong></div>':'')+'</div></div><div class="action-buttons" style="flex-shrink:0;"><button class="btn-warning btn-sm" onclick="openEditModal(\''+s.id+'\')">✏️ Edit</button>'+(faceDescriptorsMap[s.id]?'<button class="btn-sm" style="background:#dcfce7;color:var(--green-dark);" onclick="confirmDeleteFace(\''+s.id+'\')">👤✅</button>':'<button class="btn-info btn-sm" onclick="openFaceEnrollModal(\''+s.id+'\')">📸 Face</button>')+'<button class="btn-danger btn-sm" onclick="delStaff(\''+s.id+'\')">🗑️</button></div></div></div>';
+                    };
+                    let html = '<div style="font-size:13px;font-weight:700;color:var(--text-2);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;">On-Board Employees ('+onboard.length+')</div>';
+                    html += onboard.length===0 ? '<div class="card" style="text-align:center;color:var(--text-3);padding:40px;">No on-board employees yet</div>' : onboard.map(renderStaffCard).join('');
+                    if (former.length > 0) {
+                        html += '<div style="font-size:13px;font-weight:700;color:var(--text-2);margin-bottom:10px;margin-top:20px;text-transform:uppercase;letter-spacing:.5px;">Former Employees ('+former.length+')</div>';
+                        html += former.map(renderStaffCard).join('');
+                    }
+                    return html;
+                })()}`;
         }
 
         function addStaff() {
