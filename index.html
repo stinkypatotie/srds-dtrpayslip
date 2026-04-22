@@ -1944,7 +1944,8 @@
                         <div class="form-group"><label>Date</label><input type="date" id="manual-date" value="${today()}"></div>
                         <div class="form-group"><label>Login Time</label><input type="time" id="manual-login"></div>
                         <div class="form-group"><label>Logout Time</label><input type="time" id="manual-logout"></div>
-                        <div class="form-group"><label>Status</label><select id="manual-status"><option value="">Regular Day</option><option value="rest">Rest Day</option><option value="absent">Absent</option></select></div>
+                        <div class="form-group"><label>Status</label><select id="manual-status" onchange="toggleManualOncall()"><option value="">Regular Day</option><option value="rest">Rest Day</option><option value="absent">Absent</option><option value="oncall">On-Call</option></select></div>
+                        <div class="form-group" id="manual-oncall-group" style="display:none;"><label>On-Call Hours</label><input type="number" id="manual-oncall-hours" placeholder="e.g. 4" min="0.5" max="24" step="0.5" inputmode="decimal"></div>
                         <div class="form-group"><label>Notes</label><input type="text" id="manual-notes" placeholder="Optional"></div>
                     </div>
                     <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;">
@@ -1981,9 +1982,9 @@
             return `<div class="table-wrap"><table>
                 <thead><tr><th>Date</th><th>Staff</th><th>In</th><th>Out</th><th>Hrs</th><th>Status</th><th>Actions</th></tr></thead>
                 <tbody>${f.map(r=>{
-                    const s=app.staff.find(x=>x.id===r.sid), h=r.status?'-':calcH(r.in,r.out).toFixed(2);
+                    const s=app.staff.find(x=>x.id===r.sid), h=r.status==='oncall'?(r.oncallHours||0)+'h':(r.status?'-':calcH(r.in,r.out).toFixed(2));
                     const isU=!r.status&&r.out&&calcH(r.in,r.out)<app.settings.fullShiftHours;
-                    let st=r.status?{rest:'🏖️ Rest',absent:'❌ Absent'}[r.status]:(r.out?'✅':'⏳');
+                    let st=r.status?{rest:'🏖️ Rest',absent:'❌ Absent',oncall:`📞 On-Call (${r.oncallHours||0}h)`}[r.status]:(r.out?'✅':'⏳');
                     if(isU) st='<span class="undertime-badge">⚠️ Late</span>';
                     const isEd=app.editingRecord&&app.editingRecord.sid===r.sid&&app.editingRecord.date===r.date;
                     if(isEd) return `<tr style="background:#fffbeb;"><td>${r.date}</td><td>${s?s.name:'?'}</td><td><input type="time" id="edit-in" value="${r.in||''}" class="edit-input"></td><td><input type="time" id="edit-out" value="${r.out||''}" class="edit-input"></td><td>${h}</td><td>${st}</td><td><div class="action-buttons"><button class="btn-save btn-sm" onclick="saveEdit('${r.sid}','${r.date}')">Save</button><button class="btn-cancel btn-sm" onclick="cancelEdit()">Cancel</button></div></td></tr>`;
@@ -1992,7 +1993,7 @@
         }
 
         function delRec(sid,date){if(!confirm('Delete this record?'))return;app.records=app.records.filter(r=>!(r.sid===sid&&r.date===date));saveData();render();}
-        function editRec(sid,date){const r=app.records.find(r=>r.sid===sid&&r.date===date);if(!r)return;if(r.status){alert('Cannot edit Rest Day or Absent records');return;}app.editingRecord={sid,date};render();}
+        function editRec(sid,date){const r=app.records.find(r=>r.sid===sid&&r.date===date);if(!r)return;if(r.status){alert('Cannot edit Rest Day, Absent, or On-Call records');return;}app.editingRecord={sid,date};render();}
         function saveEdit(sid,date){const r=app.records.find(r=>r.sid===sid&&r.date===date);if(!r)return;const ni=document.getElementById('edit-in').value,no=document.getElementById('edit-out').value;if(!ni&&!no){alert('Enter at least one time');return;}r.in=ni||null;r.out=no||null;app.editingRecord=null;saveData();render();}
         function cancelEdit(){app.editingRecord=null;render();}
 
@@ -2016,10 +2017,10 @@
             if (!app.start||!app.end) return `<div class="card" style="text-align:center;color:var(--text-3);padding:40px;">Select a date range to calculate payroll</div>`;
             return app.staff.filter(s => !s.status || s.status === 'onboard').map(s => {
                 const recs=app.records.filter(r=>{const rd=new Date(r.date);return r.sid===s.id&&rd>=new Date(app.start)&&rd<=new Date(app.end);});
-                let fd=0,ud=0,uh=0,ph=0,oh=0;
-                recs.forEach(r=>{if(!r.status){const h=calcH(r.in,r.out);if(h>=app.settings.fullShiftHours){fd++;oh+=calcOT(r.out);}else if(h>0){ud++;ph+=h;uh+=(app.settings.fullShiftHours-h);}}});
+                let fd=0,ud=0,uh=0,ph=0,oh=0,och=0;
+                recs.forEach(r=>{if(r.status==='oncall'){och+=parseFloat(r.oncallHours||0);}else if(!r.status){const h=calcH(r.in,r.out);if(h>=app.settings.fullShiftHours){fd++;oh+=calcOT(r.out);}else if(h>0){ud++;ph+=h;uh+=(app.settings.fullShiftHours-h);}}});
                 const rt=RATES[s.position],hr=getHourlyRate(s.position);
-                const rp=roundUp(fd*rt.daily),pp=roundUp(ph*hr),op=roundUp(oh*rt.ot),gross=rp+pp+op;
+                const rp=roundUp(fd*rt.daily),pp=roundUp(ph*hr),op=roundUp(oh*rt.ot),ocp=roundUp(och*rt.ot),gross=rp+pp+op+ocp;
                 const dip=app.deductions.filter(d=>{const dd=new Date(d.deductionDate);return d.staffId===s.id&&dd>=new Date(app.start)&&dd<=new Date(app.end)&&d.status==='pending';});
                 const td=roundUp(dip.reduce((sum,d)=>sum+d.amount,0));
                 const inc=app.incentives[s.id]||{enabled:false,amount:0,label:'Incentive'};
@@ -2037,6 +2038,7 @@
                         <div class="payroll-line">Regular Pay: <span>₱${rp.toLocaleString()}</span></div>
                         ${pp>0?`<div class="payroll-line">Partial Day Pay: <span>₱${pp.toLocaleString()}</span></div>`:''}
                         ${op>0?`<div class="payroll-line">OT Pay: <span>₱${op.toLocaleString()}</span></div>`:''}
+                        ${ocp>0?`<div class="payroll-line">On-Call Pay: <span>₱${ocp.toLocaleString()}</span></div>`:''}
                         <div class="payroll-line">Gross Pay: <span>₱${gross.toLocaleString()}</span></div>
                         ${td>0?`<div class="payroll-line">Deductions: <span class="payroll-deduct">-₱${td.toLocaleString()}</span></div>`:''}
                         <div class="payroll-line" id="inc-summary-${s.id}" style="color:var(--green);font-weight:700;display:${incAmt>0?'flex':'none'};">${inc.label||'Incentive'}: <span>+₱${incAmt.toLocaleString()}</span></div>
@@ -2060,10 +2062,10 @@
             if(!app.start||!app.end){alert('Select a date range first');return;}
             const staff=app.staff.find(s=>s.id===staffId);if(!staff)return;
             const recs=app.records.filter(r=>{const rd=new Date(r.date);return r.sid===staffId&&rd>=new Date(app.start)&&rd<=new Date(app.end);});
-            let fd=0,ud=0,uh=0,ph=0,oh=0;
-            recs.forEach(r=>{if(!r.status){const h=calcH(r.in,r.out);if(h>=app.settings.fullShiftHours){fd++;oh+=calcOT(r.out);}else if(h>0){ud++;ph+=h;uh+=(app.settings.fullShiftHours-h);}}});
+            let fd=0,ud=0,uh=0,ph=0,oh=0,och=0;
+            recs.forEach(r=>{if(r.status==='oncall'){och+=parseFloat(r.oncallHours||0);}else if(!r.status){const h=calcH(r.in,r.out);if(h>=app.settings.fullShiftHours){fd++;oh+=calcOT(r.out);}else if(h>0){ud++;ph+=h;uh+=(app.settings.fullShiftHours-h);}}});
             const rt=RATES[staff.position],hr=getHourlyRate(staff.position);
-            const rp=roundUp(fd*rt.daily),pp=roundUp(ph*hr),op=roundUp(oh*rt.ot),gross=rp+pp+op;
+            const rp=roundUp(fd*rt.daily),pp=roundUp(ph*hr),op=roundUp(oh*rt.ot),ocp=roundUp(och*rt.ot),gross=rp+pp+op+ocp;
             const dip=app.deductions.filter(d=>{const dd=new Date(d.deductionDate);return d.staffId===staffId&&dd>=new Date(app.start)&&dd<=new Date(app.end)&&d.status==='pending';});
             const td=roundUp(dip.reduce((sum,d)=>sum+d.amount,0));
             const inc=app.incentives[staffId]||{enabled:false,amount:0,label:'Incentive'};
@@ -2077,6 +2079,7 @@
                 ${fd>0?`<tr><th>Full Days × Rate</th><td colspan="2">${fd} days × ₱${rt.daily} = ₱${rp}</td></tr>`:''}
                 ${ud>0?`<tr><th>Undertime Days</th><td colspan="2">${ud} days / ${ph.toFixed(2)} hrs worked × ₱${hr.toFixed(2)}/hr = ₱${pp}</td></tr>`:''}
                 ${oh>0?`<tr><th>Overtime</th><td colspan="2">${oh} hr × ₱${rt.ot}/hr = ₱${op}</td></tr>`:''}
+                ${ocp>0?`<tr><th>On-Call Pay</th><td colspan="2">${och} hr × ₱${rt.ot}/hr (OT rate) = ₱${ocp}</td></tr>`:''}
                 <tr><th>Gross Pay</th><td colspan="2"><strong>₱${gross}</strong></td></tr>
                 ${dip.map(d=>`<tr><th style="color:#ef4444;">${d.type==='late'?'⏰ ':''} ${d.reason||'Deduction'}</th><td colspan="2" style="color:#ef4444;">-₱${roundUp(d.amount)}</td></tr>`).join('')}
                 ${td>0?`<tr><th>Total Deductions</th><td colspan="2" style="color:#ef4444;"><strong>-₱${td}</strong></td></tr>`:''}
@@ -2118,10 +2121,10 @@
             const s = app.staff.find(x => x.id === sid);
             if (!s || !app.start || !app.end) return;
             const recs = app.records.filter(r => { const rd = new Date(r.date); return r.sid === sid && rd >= new Date(app.start) && rd <= new Date(app.end); });
-            let fd=0, ph=0, oh=0;
-            recs.forEach(r => { if (!r.status) { const h = calcH(r.in, r.out); if (h >= app.settings.fullShiftHours) { fd++; oh += calcOT(r.out); } else if (h > 0) { ph += h; } } });
+            let fd=0, ph=0, oh=0, och=0;
+            recs.forEach(r => { if (r.status==='oncall') { och+=parseFloat(r.oncallHours||0); } else if (!r.status) { const h = calcH(r.in, r.out); if (h >= app.settings.fullShiftHours) { fd++; oh += calcOT(r.out); } else if (h > 0) { ph += h; } } });
             const rt = RATES[s.position], hr = getHourlyRate(s.position);
-            const rp = roundUp(fd*rt.daily), pp = roundUp(ph*hr), op = roundUp(oh*rt.ot), gross = rp+pp+op;
+            const rp = roundUp(fd*rt.daily), pp = roundUp(ph*hr), op = roundUp(oh*rt.ot), ocp = roundUp(och*rt.ot), gross = rp+pp+op+ocp;
             const dip = app.deductions.filter(d => { const dd = new Date(d.deductionDate); return d.staffId === sid && dd >= new Date(app.start) && dd <= new Date(app.end) && d.status === 'pending'; });
             const td = roundUp(dip.reduce((sum,d) => sum+d.amount, 0));
             const net = gross - td + incAmt;
@@ -2940,9 +2943,15 @@
         }
 
         // Manual entry helpers
+        function toggleManualOncall() {
+            const status = document.getElementById('manual-status').value;
+            const grp = document.getElementById('manual-oncall-group');
+            if (grp) grp.style.display = status === 'oncall' ? '' : 'none';
+        }
         function clearManualForm() {
-            ['manual-staff','manual-login','manual-logout','manual-status','manual-notes'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+            ['manual-staff','manual-login','manual-logout','manual-status','manual-notes','manual-oncall-hours'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
             const d=document.getElementById('manual-date');if(d)d.value=today();
+            const grp=document.getElementById('manual-oncall-group');if(grp)grp.style.display='none';
             const m=document.getElementById('manual-msg');if(m)m.style.display='none';
         }
         function addManualEntry() {
@@ -2953,9 +2962,16 @@
             if(!date) return showMsg('manual-msg','❌ Select a date','err');
             const ex=app.records.find(r=>r.sid===sid&&r.date===date);
             if(status&&(status==='rest'||status==='absent')){
-                if(ex){if(!confirm('Record exists. Overwrite?'))return;ex.status=status;ex.in=null;ex.out=null;ex.notes=notes||'Manually set';}
+                if(ex){if(!confirm('Record exists. Overwrite?'))return;ex.status=status;ex.in=null;ex.out=null;ex.oncallHours=null;ex.notes=notes||'Manually set';}
                 else app.records.push({id:Date.now(),sid,date,in:null,out:null,status,notes:notes||'Manually set'});
                 saveData();showMsg('manual-msg','✅ Status recorded!','ok');clearManualForm();render();return;
+            }
+            if(status==='oncall'){
+                const och=parseFloat(document.getElementById('manual-oncall-hours').value);
+                if(!och||och<=0) return showMsg('manual-msg','❌ Enter on-call hours','err');
+                if(ex){if(!confirm('Record exists. Overwrite?'))return;ex.status='oncall';ex.in=null;ex.out=null;ex.oncallHours=och;ex.notes=notes||'On-Call';}
+                else app.records.push({id:Date.now(),sid,date,in:null,out:null,status:'oncall',oncallHours:och,notes:notes||'On-Call'});
+                const st2=app.staff.find(x=>x.id===sid);const otr2=st2?(st2.otRate||RATES[st2.position].ot):0;const pay=roundUp(och*otr2);saveData();showMsg('manual-msg',`✅ On-Call: ${och}h × ₱${otr2} = ₱${pay}`,'ok');clearManualForm();render();return;
             }
             if(!li&&!lo) return showMsg('manual-msg','❌ Enter at least one time','err');
             if(li&&lo){const lim=parseInt(li.split(':')[0])*60+parseInt(li.split(':')[1]),lom=parseInt(lo.split(':')[0])*60+parseInt(lo.split(':')[1]);if(lom<=lim)return showMsg('manual-msg','❌ Logout must be after login','err');}
