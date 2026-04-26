@@ -1799,7 +1799,7 @@
                     const lm=Math.floor((lt-ct)/60000), ld=roundUp((getHourlyRate(s.position)/60)*lm);
                     app.deductions.push({id:'deduct-'+Date.now(),staffId:sid,amount:ld,reason:`Late Login: ${lm} minute(s) late (at ${time})`,deductionDate:td,createdDate:new Date().toISOString(),status:'pending',type:'late'});
                     lateMsg=` ⚠️ Late\Undertime ${lm} min – ₱${ld} deducted`;
-                } else lateMsg=' ⚠️ Late (deduction already recorded)';
+                } else lateMsg=' ⚠️ Late\Undertime (deduction already recorded)';
             }
 
             saveData();
@@ -1995,7 +1995,7 @@
                     const h=r.status==='oncall'?(r.oncallHours||0)+'h':(r.status?'-':totalH.toFixed(2));
                     const isU=!r.status&&(r.out||r.out2)&&totalH<app.settings.fullShiftHours&&totalH>0;
                     let st=r.status?{rest:'🏖️ Rest',absent:'❌ Absent',oncall:`📞 On-Call (${r.oncallHours||0}h)`}[r.status]:(r.out?'✅':'⏳');
-                    if(isU) st='<span class="undertime-badge">⚠️ Late</span>';
+                    if(isU) st='<span class="undertime-badge">⚠️ Late\Undertime</span>';
                     const inDisp=r.in||'-';
                     const outDisp=r.out||'-';
                     const shift2Disp=(r.in2||r.out2)?`<div style="font-size:11px;color:var(--blue);margin-top:2px;">↩️ ${r.in2||'-'} → ${r.out2||'-'}</div>`:'';
