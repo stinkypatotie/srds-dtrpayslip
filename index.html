@@ -1792,14 +1792,15 @@
             }
 
             const lt=new Date('2000-01-01 '+time), ct=new Date('2000-01-01 07:35:00');
+            const isOncallDay = existing && existing.status === 'oncall';
             let lateMsg='';
-            if (lt>ct) {
+            if (lt>ct && !isOncallDay) {
                 const exLate=app.deductions.find(d=>d.staffId===sid&&d.deductionDate===td&&d.type==='late');
                 if (!exLate) {
                     const lm=Math.floor((lt-ct)/60000), ld=roundUp((getHourlyRate(s.position)/60)*lm);
                     app.deductions.push({id:'deduct-'+Date.now(),staffId:sid,amount:ld,reason:`Late Login: ${lm} minute(s) late (at ${time})`,deductionDate:td,createdDate:new Date().toISOString(),status:'pending',type:'late'});
-                    lateMsg=` ⚠️ Late/Undertime ${lm} min – ₱${ld} deducted`;
-                } else lateMsg=' ⚠️ Late/Undertime (deduction already recorded)';
+                    lateMsg=` ⚠️ Late / Undertime ${lm} min – ₱${ld} deducted`;
+                } else lateMsg=' ⚠️ Late / Undertime (deduction already recorded)';
             }
 
             saveData();
@@ -1995,7 +1996,7 @@
                     const h=r.status==='oncall'?(r.oncallHours||0)+'h':(r.status?'-':totalH.toFixed(2));
                     const isU=!r.status&&(r.out||r.out2)&&totalH<app.settings.fullShiftHours&&totalH>0;
                     let st=r.status?{rest:'🏖️ Rest',absent:'❌ Absent',oncall:`📞 On-Call (${r.oncallHours||0}h)`}[r.status]:(r.out?'✅':'⏳');
-                    if(isU) st='<span class="undertime-badge">⚠️ Late/Undertime</span>';
+                    if(isU) st='<span class="undertime-badge">⚠️ Late / Undertime</span>';
                     const inDisp=r.in||'-';
                     const outDisp=r.out||'-';
                     const shift2Disp=(r.in2||r.out2)?`<div style="font-size:11px;color:var(--blue);margin-top:2px;">↩️ ${r.in2||'-'} → ${r.out2||'-'}</div>`:'';
@@ -2155,6 +2156,7 @@
         // ═══════════════════════════════════════════════
         function renderDeductions() {
             if (!app.adminMode) return adminRequired();
+            if (app.deductionStaffFilter === undefined) app.deductionStaffFilter = '';
             return `
                 <div class="page-title">💸 Deductions</div>
                 <div class="card">
@@ -2165,6 +2167,16 @@
                     </div>
                     <button class="btn-warning btn-sm" onclick="scanForLateLogins()">🔍 Scan & Create Late Deductions</button>
                     <div id="scan-msg" class="msg" style="display:none;margin-top:12px;"></div>
+                </div>
+                <div class="card">
+                    <div class="section-title">🔎 Filter Deductions</div>
+                    <div class="form-group" style="max-width:320px;">
+                        <label>Employee</label>
+                        <select onchange="app.deductionStaffFilter=this.value;render()">
+                            <option value="">All Employees</option>
+                            ${app.staff.map(s=>`<option value="${s.id}" ${app.deductionStaffFilter===s.id?'selected':''}>${s.name}</option>`).join('')}
+                        </select>
+                    </div>
                 </div>
                 <div class="card">
                     <div class="section-title">➕ Record Cash Advance</div>
@@ -2182,7 +2194,10 @@
 
         function renderDeductionsList() {
             if (app.deductions.length===0) return `<div class="card" style="text-align:center;color:var(--text-3);padding:40px;">No deductions recorded yet</div>`;
-            const pending=app.deductions.filter(d=>d.status==='pending'), applied=app.deductions.filter(d=>d.status==='applied');
+            const sf = app.deductionStaffFilter||'';
+            const allFiltered = sf ? app.deductions.filter(d=>d.staffId===sf) : app.deductions;
+            if (sf && allFiltered.length===0) return `<div class="card" style="text-align:center;color:var(--text-3);padding:40px;">No deductions found for this employee</div>`;
+            const pending=allFiltered.filter(d=>d.status==='pending'), applied=allFiltered.filter(d=>d.status==='applied');
             const lateByStaff={};
             pending.filter(d=>d.type==='late').forEach(d=>{
                 if(!lateByStaff[d.staffId]){lateByStaff[d.staffId]={count:0,total:0,staff:app.staff.find(s=>s.id===d.staffId)};}
@@ -2227,7 +2242,7 @@
             if(!s||!e) return showMsg('scan-msg','❌ Select both dates','err');
             if(new Date(s)>new Date(e)) return showMsg('scan-msg','❌ Start before end','err');
             let found=0,created=0;
-            app.records.filter(r=>{const rd=new Date(r.date);return rd>=new Date(s)&&rd<=new Date(e)&&r.in;}).forEach(r=>{
+            app.records.filter(r=>{const rd=new Date(r.date);return rd>=new Date(s)&&rd<=new Date(e)&&r.in&&r.status!=='oncall';}).forEach(r=>{
                 const lt=new Date('2000-01-01 '+r.in),ct=new Date('2000-01-01 07:35:00');
                 if(lt>ct){found++;if(!app.deductions.find(d=>d.staffId===r.sid&&d.deductionDate===r.date&&d.type==='late')){
                     const st=app.staff.find(x=>x.id===r.sid);if(!st)return;
