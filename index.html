@@ -1798,7 +1798,7 @@
                 if (!exLate) {
                     const lm=Math.floor((lt-ct)/60000), ld=roundUp((getHourlyRate(s.position)/60)*lm);
                     app.deductions.push({id:'deduct-'+Date.now(),staffId:sid,amount:ld,reason:`Late Login: ${lm} minute(s) late (at ${time})`,deductionDate:td,createdDate:new Date().toISOString(),status:'pending',type:'late'});
-                    lateMsg=` ⚠️ Late ${lm} min – ₱${ld} deducted`;
+                    lateMsg=` ⚠️ Late\Undertime ${lm} min – ₱${ld} deducted`;
                 } else lateMsg=' ⚠️ Late (deduction already recorded)';
             }
 
