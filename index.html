@@ -1161,11 +1161,31 @@
                     if (app.settings.photoCapture && app.settings.photoCapture.captureEnabled === false) { doClockIn(sid, s, null, null); }
                     else { openCameraModal(sid, s); }
                 } else {
-                    const td = today(), rec = app.records.find(r => r.sid == sid && r.date === td);
-                    if (!rec || !rec.in) { showMsg('clock-msg', 'No clock-in record for today', 'err'); return; }
-                    if (rec.out) { showMsg('clock-msg', 'Already clocked out today', 'err'); return; }
-                    pendingClockOut = { sid, pin: s.pin };
-                    showClockoutModal(sid, td);
+                    // Re-sync from Firebase before validating — mirrors clockOut() PIN path.
+                    // Guards against cross-device use and page-reload after a silent Firebase write failure.
+                    const td = today();
+                    const doFaceClockOutCheck = () => {
+                        const rec = app.records.find(r => r.sid == sid && r.date === td);
+                        if (!rec || !rec.in) { showMsg('clock-msg', 'No clock-in record for today', 'err'); return; }
+                        if (rec.out) { showMsg('clock-msg', 'Already clocked out today', 'err'); return; }
+                        pendingClockOut = { sid, pin: s.pin };
+                        showClockoutModal(sid, td);
+                    };
+                    if (isFirebaseInitialized) {
+                        db.ref('records').once('value').then(snap => {
+                            const fbData = snap.val();
+                            if (fbData) {
+                                const fbRecords = (Array.isArray(fbData) ? fbData : Object.values(fbData)).filter(Boolean);
+                                const localOnly = app.records.filter(lr =>
+                                    !fbRecords.some(fr => fr.sid == lr.sid && fr.date === lr.date)
+                                );
+                                app.records = [...fbRecords, ...localOnly];
+                            }
+                            doFaceClockOutCheck();
+                        }).catch(() => doFaceClockOutCheck());
+                    } else {
+                        doFaceClockOutCheck();
+                    }
                 }
             }, 1400);
         }
@@ -1322,7 +1342,19 @@
                     const data = snap.val();
                     if (data) {
                         app.staff = data.staff || [];
-                        app.records = data.records || [];
+                        // Merge Firebase records with localStorage to recover any records
+                        // whose Firebase write failed silently (e.g. network hiccup at clock-in).
+                        // Same merge pattern used in clockOut() re-sync.
+                        const _fbRecs = Array.isArray(data.records)
+                            ? data.records
+                            : (data.records ? Object.values(data.records) : []);
+                        const _localRecs = JSON.parse(localStorage.getItem('records')) || [];
+                        const _localOnly = _localRecs.filter(lr =>
+                            !_fbRecs.some(fr => fr && fr.sid == lr.sid && fr.date === lr.date)
+                        );
+                        app.records = [..._fbRecs, ..._localOnly];
+                        // Heal Firebase if we recovered orphaned records so other devices see them too
+                        if (_localOnly.length > 0) db.ref('records').set(app.records).catch(() => {});
                         app.deductions = data.deductions || [];
                         if (data.settings) {
                             const _tg2 = app.settings.telegram;
