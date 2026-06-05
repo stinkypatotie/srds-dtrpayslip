@@ -1302,7 +1302,7 @@
             incentives: {}  // keyed by staffId: { enabled, amount, label }
         };
 
-        const RATES = { regular: { daily: 650, ot: 68 }, senior: { daily: 700, ot: 73 }, trainee: { daily: 500, ot: 53 }, provisionary: { daily: 350, ot: 37 } };
+        const RATES = { regular: { daily: 650, ot: 68 }, senior: { daily: 700, ot: 73 }, trainee: { daily: 500, ot: 53 }, provisionary: { daily: 400, ot: 37 } };
         function getHourlyRate(pos) { return RATES[pos].daily / 12; }
         function roundUp(v) { return Math.ceil(v); }
 
@@ -2337,7 +2337,7 @@
                                 <option value="regular">Regular I (₱650/day)</option>
                                 <option value="senior">Regular II (₱700/day)</option>
                                 <option value="trainee">Trainee (₱500/day)</option>
-                                <option value="provisionary">Provisionary (₱350/day)</option>
+                                <option value="provisionary">Provisionary (₱400/day)</option>
                             </select>
                         </div>
                         <div class="form-group"><label>PIN (4 digits)</label><input type="password" id="new-pin" placeholder="1234" maxlength="4" inputmode="numeric"></div>
