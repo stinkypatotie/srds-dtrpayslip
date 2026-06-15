@@ -1355,7 +1355,9 @@
                         app.records = [..._fbRecs, ..._localOnly];
                         // Heal Firebase if we recovered orphaned records so other devices see them too
                         if (_localOnly.length > 0) db.ref('records').set(app.records).catch(() => {});
-                        app.deductions = data.deductions || [];
+                        app.deductions = Array.isArray(data.deductions)
+                            ? data.deductions
+                            : (data.deductions ? Object.values(data.deductions) : []);
                         if (data.settings) {
                             const _tg2 = app.settings.telegram;
                             const _stg2 = data.settings.telegram || {};
@@ -1948,7 +1950,7 @@
                 <div class="page-title">📋 View DTR</div>
                 <div class="card">
                     <div class="form-grid">
-                        <div class="form-group"><label>Staff</label><select id="view-staff" onchange="app.viewStaff=this.value;render()"><option value="">All Staff</option>${app.staff.map(s=>`<option value="${s.id}" ${app.viewStaff==s.id?'selected':''} >${s.name}</option>`).join('')}</select></div>
+                        <div class="form-group"><label>Staff</label><select id="view-staff" onchange="app.viewStaff=this.value;render()"><option value="">All Staff</option>${app.staff.filter(s=>!s.status||s.status==='onboard').map(s=>`<option value="${s.id}" ${app.viewStaff==s.id?'selected':''} >${s.name}</option>`).join('')}</select></div>
                         <div class="form-group"><label>Start Date</label><input type="date" id="view-start" value="${app.start}" onchange="app.start=this.value;render()"></div>
                         <div class="form-group"><label>End Date</label><input type="date" id="view-end" value="${app.end}" onchange="app.end=this.value;render()"></div>
                     </div>
@@ -1960,7 +1962,7 @@
                 <div id="mark-section" style="display:none;" class="card">
                     <div class="section-title">📝 Mark Attendance</div>
                     <div class="form-grid">
-                        <div class="form-group"><label>Staff</label><select id="mark-staff">${app.staff.map(s=>`<option value="${s.id}">${s.name}</option>`).join('')}</select></div>
+                        <div class="form-group"><label>Staff</label><select id="mark-staff">${app.staff.filter(s=>!s.status||s.status==='onboard').map(s=>`<option value="${s.id}">${s.name}</option>`).join('')}</select></div>
                         <div class="form-group"><label>Date</label><input type="date" id="mark-date" value="${today()}"></div>
                         <div class="form-group"><label>Status</label><select id="mark-status"><option value="rest">Rest Day</option><option value="absent">Absent</option></select></div>
                     </div>
@@ -1973,7 +1975,7 @@
                 <div id="manual-entry-section" style="display:none;" class="card">
                     <div class="section-title">➕ Manual Time Entry</div>
                     <div class="form-grid">
-                        <div class="form-group"><label>Staff</label><select id="manual-staff"><option value="">Choose staff...</option>${app.staff.map(s=>`<option value="${s.id}">${s.name}</option>`).join('')}</select></div>
+                        <div class="form-group"><label>Staff</label><select id="manual-staff"><option value="">Choose staff...</option>${app.staff.filter(s=>!s.status||s.status==='onboard').map(s=>`<option value="${s.id}">${s.name}</option>`).join('')}</select></div>
                         <div class="form-group"><label>Date</label><input type="date" id="manual-date" value="${today()}"></div>
                         <div class="form-group"><label>Login Time</label><input type="time" id="manual-login"></div>
                         <div class="form-group"><label>Logout Time</label><input type="time" id="manual-logout"></div>
@@ -2024,6 +2026,7 @@
                 <thead><tr><th>Date</th><th>Staff</th><th>In</th><th>Out</th><th>Hrs</th><th>Status</th><th>Actions</th></tr></thead>
                 <tbody>${f.map(r=>{
                     const s=app.staff.find(x=>x.id===r.sid);
+                    if(s&&(s.status==='resigned'||s.status==='terminated'))return'';
                     const totalH=r.status==='oncall'?0:(r.status?0:(calcH(r.in,r.out)+calcH(r.in2,r.out2)));
                     const h=r.status==='oncall'?(r.oncallHours||0)+'h':(r.status?'-':totalH.toFixed(2));
                     const isU=!r.status&&(r.out||r.out2)&&totalH<app.settings.fullShiftHours&&totalH>0;
@@ -2206,14 +2209,14 @@
                         <label>Employee</label>
                         <select onchange="app.deductionStaffFilter=this.value;render()">
                             <option value="">All Employees</option>
-                            ${app.staff.map(s=>`<option value="${s.id}" ${app.deductionStaffFilter===s.id?'selected':''}>${s.name}</option>`).join('')}
+                            ${app.staff.filter(s=>!s.status||s.status==='onboard').map(s=>`<option value="${s.id}" ${app.deductionStaffFilter===s.id?'selected':''}>${s.name}</option>`).join('')}
                         </select>
                     </div>
                 </div>
                 <div class="card">
                     <div class="section-title">➕ Record Cash Advance</div>
                     <div class="form-grid">
-                        <div class="form-group"><label>Employee</label><select id="deduction-staff"><option value="">Choose...</option>${app.staff.map(s=>`<option value="${s.id}">${s.name}</option>`).join('')}</select></div>
+                        <div class="form-group"><label>Employee</label><select id="deduction-staff"><option value="">Choose...</option>${app.staff.filter(s=>!s.status||s.status==='onboard').map(s=>`<option value="${s.id}">${s.name}</option>`).join('')}</select></div>
                         <div class="form-group"><label>Amount (₱)</label><input type="number" id="deduction-amount" placeholder="0.00" min="0" step="0.01" inputmode="decimal"></div>
                         <div class="form-group"><label>Deduction Date</label><input type="date" id="deduction-date" value="${today()}"></div>
                         <div class="form-group"><label>Reason</label><input type="text" id="deduction-reason" placeholder="e.g., Cash advance"></div>
