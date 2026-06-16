@@ -1176,10 +1176,16 @@
                             const fbData = snap.val();
                             if (fbData) {
                                 const fbRecords = (Array.isArray(fbData) ? fbData : Object.values(fbData)).filter(Boolean);
-                                const localOnly = app.records.filter(lr =>
+                                const localRecs2 = JSON.parse(localStorage.getItem('records')) || [];
+                                const localOnly = localRecs2.filter(lr =>
                                     !fbRecords.some(fr => fr.sid == lr.sid && fr.date === lr.date)
                                 );
-                                app.records = [...fbRecords, ...localOnly];
+                                const merged2 = fbRecords.map(fr => {
+                                    if (!fr || fr.out) return fr;
+                                    const lr = localRecs2.find(l => l.sid == fr.sid && l.date === fr.date);
+                                    return (lr && lr.out) ? { ...fr, out: lr.out, out2: lr.out2 || fr.out2 } : fr;
+                                });
+                                app.records = [...merged2, ...localOnly];
                             }
                             doFaceClockOutCheck();
                         }).catch(() => doFaceClockOutCheck());
@@ -1349,12 +1355,22 @@
                             ? data.records
                             : (data.records ? Object.values(data.records) : []);
                         const _localRecs = JSON.parse(localStorage.getItem('records')) || [];
+                        // Recover records that exist only in localStorage (Firebase write never completed)
                         const _localOnly = _localRecs.filter(lr =>
                             !_fbRecs.some(fr => fr && fr.sid == lr.sid && fr.date === lr.date)
                         );
-                        app.records = [..._fbRecs, ..._localOnly];
-                        // Heal Firebase if we recovered orphaned records so other devices see them too
-                        if (_localOnly.length > 0) db.ref('records').set(app.records).catch(() => {});
+                        // Also recover clock-out times saved to localStorage but missing from Firebase
+                        // (page closed/reloaded before the async db.ref().update() completed after clock-out)
+                        const _merged = _fbRecs.map(fr => {
+                            if (!fr || fr.out) return fr; // Firebase already has out — trust it
+                            const lr = _localRecs.find(l => l.sid == fr.sid && l.date === fr.date);
+                            return (lr && lr.out) ? { ...fr, out: lr.out, out2: lr.out2 || fr.out2 } : fr;
+                        });
+                        app.records = [..._merged, ..._localOnly];
+                        // Heal Firebase with any recovered data so other devices see it too
+                        const _needsHeal = _localOnly.length > 0 ||
+                            _merged.some((mr, i) => mr && _fbRecs[i] && mr.out !== _fbRecs[i].out);
+                        if (_needsHeal) db.ref('records').set(app.records).catch(() => {});
                         app.deductions = Array.isArray(data.deductions)
                             ? data.deductions
                             : (data.deductions ? Object.values(data.deductions) : []);
@@ -1866,13 +1882,18 @@
                     const data = snap.val();
                     if (data) {
                         const fbRecords = Array.isArray(data) ? data : Object.values(data);
-                        // Merge: keep Firebase records as the base, but preserve any local
-                        // records that haven't synced yet (e.g. a recent clock-in that
-                        // was saved to localStorage but whose Firebase write is still pending)
-                        const localOnly = app.records.filter(lr =>
+                        // Merge: keep Firebase records as base, but also rescue clock-out times
+                        // that are in localStorage but not yet written to Firebase
+                        const localRecs = JSON.parse(localStorage.getItem('records')) || [];
+                        const localOnly = localRecs.filter(lr =>
                             !fbRecords.some(fr => fr.sid == lr.sid && fr.date === lr.date)
                         );
-                        app.records = [...fbRecords, ...localOnly];
+                        const merged = fbRecords.map(fr => {
+                            if (!fr || fr.out) return fr;
+                            const lr = localRecs.find(l => l.sid == fr.sid && l.date === fr.date);
+                            return (lr && lr.out) ? { ...fr, out: lr.out, out2: lr.out2 || fr.out2 } : fr;
+                        });
+                        app.records = [...merged, ...localOnly];
                     }
                     doCheck();
                 }).catch(() => doCheck());
