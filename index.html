@@ -1355,14 +1355,14 @@
                             ? data.records
                             : (data.records ? Object.values(data.records) : []);
                         const _localRecs = JSON.parse(localStorage.getItem('records')) || [];
-                        // Recover records that exist only in localStorage (Firebase write never completed)
+                        // Recover records only in localStorage (Firebase write never completed)
                         const _localOnly = _localRecs.filter(lr =>
                             !_fbRecs.some(fr => fr && fr.sid == lr.sid && fr.date === lr.date)
                         );
-                        // Also recover clock-out times saved to localStorage but missing from Firebase
-                        // (page closed/reloaded before the async db.ref().update() completed after clock-out)
+                        // Also rescue clock-out times saved to localStorage but missing from Firebase
+                        // (page closed before async db.ref().update() completed after clock-out)
                         const _merged = _fbRecs.map(fr => {
-                            if (!fr || fr.out) return fr; // Firebase already has out — trust it
+                            if (!fr || fr.out) return fr;
                             const lr = _localRecs.find(l => l.sid == fr.sid && l.date === fr.date);
                             return (lr && lr.out) ? { ...fr, out: lr.out, out2: lr.out2 || fr.out2 } : fr;
                         });
@@ -1371,9 +1371,27 @@
                         const _needsHeal = _localOnly.length > 0 ||
                             _merged.some((mr, i) => mr && _fbRecs[i] && mr.out !== _fbRecs[i].out);
                         if (_needsHeal) db.ref('records').set(app.records).catch(() => {});
-                        app.deductions = Array.isArray(data.deductions)
+                        // Normalize Firebase deductions (may come back as object with numeric keys)
+                        // AND merge local status changes (e.g. 'applied') that haven't synced yet
+                        const _fbDeds = Array.isArray(data.deductions)
                             ? data.deductions
                             : (data.deductions ? Object.values(data.deductions) : []);
+                        const _localDeds = JSON.parse(localStorage.getItem('deductions')) || [];
+                        // For each Firebase deduction, prefer local version if status differs
+                        // (covers: marked-applied locally before Firebase write completed)
+                        const _mergedDeds = _fbDeds.map(fd => {
+                            const ld = _localDeds.find(l => l.id === fd.id);
+                            return (ld && ld.status !== fd.status) ? { ...fd, status: ld.status } : fd;
+                        });
+                        // Also recover deductions that are in localStorage but not yet in Firebase
+                        const _localDedOnly = _localDeds.filter(ld =>
+                            !_fbDeds.some(fd => fd.id === ld.id)
+                        );
+                        app.deductions = [..._mergedDeds, ..._localDedOnly];
+                        // Heal Firebase if anything was recovered
+                        const _dedNeedsHeal = _localDedOnly.length > 0 ||
+                            _mergedDeds.some((md, i) => md && _fbDeds[i] && md.status !== _fbDeds[i].status);
+                        if (_dedNeedsHeal) db.ref('deductions').set(app.deductions).catch(() => {});
                         if (data.settings) {
                             const _tg2 = app.settings.telegram;
                             const _stg2 = data.settings.telegram || {};
@@ -1882,8 +1900,7 @@
                     const data = snap.val();
                     if (data) {
                         const fbRecords = Array.isArray(data) ? data : Object.values(data);
-                        // Merge: keep Firebase records as base, but also rescue clock-out times
-                        // that are in localStorage but not yet written to Firebase
+                        // Merge: rescue clock-out times in localStorage not yet written to Firebase
                         const localRecs = JSON.parse(localStorage.getItem('records')) || [];
                         const localOnly = localRecs.filter(lr =>
                             !fbRecords.some(fr => fr.sid == lr.sid && fr.date === lr.date)
@@ -2290,7 +2307,7 @@
             saveData();
             document.getElementById('deduction-staff').value='';document.getElementById('deduction-amount').value='';document.getElementById('deduction-reason').value='';
             showMsg('deduction-msg',`✅ ₱${amt.toFixed(2)} recorded for ${staff.name}`,'ok');
-            setTimeout(()=>render(),1500);
+            render();
         }
 
         function scanForLateLogins() {
