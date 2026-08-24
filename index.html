@@ -592,6 +592,45 @@
         .face-action-btn .btn-emoji { font-size:22px; }
         .face-action-btn:active { transform:scale(.96); }
         .face-models-banner { background:linear-gradient(135deg,#eff6ff,#f0fdf4); border:1px solid #bfdbfe; border-radius:var(--radius-sm); padding:10px 14px; font-size:13px; font-weight:600; color:#1e40af; display:flex; align-items:center; gap:8px; margin-bottom:12px; }
+
+        /* ═══════════════════════════════════════════════
+           BIRTHDAY POP-UP 🎉
+        ═══════════════════════════════════════════════ */
+        .birthday-overlay {
+            display:none; position:fixed; inset:0; z-index:9999;
+            background:rgba(20,10,40,.55);
+            align-items:center; justify-content:center;
+            padding:24px; overflow:hidden;
+            animation: bdayFadeIn .25s ease;
+        }
+        @keyframes bdayFadeIn { from{opacity:0} to{opacity:1} }
+        .birthday-card {
+            position:relative; width:100%; max-width:380px;
+            border-radius:28px; padding:36px 26px 30px;
+            text-align:center; overflow:hidden;
+            background: linear-gradient(135deg,#ff6ec4,#7873f5 45%,#4ade80 100%);
+            background-size: 240% 240%;
+            animation: bdayGradient 6s ease infinite, bdayPop .5s cubic-bezier(.26,1.6,.5,1);
+            box-shadow: 0 20px 60px rgba(0,0,0,.35);
+        }
+        @keyframes bdayGradient { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
+        @keyframes bdayPop { 0%{transform:scale(.4) rotate(-8deg); opacity:0} 60%{transform:scale(1.08) rotate(2deg); opacity:1} 100%{transform:scale(1) rotate(0)} }
+        .birthday-emoji-row { font-size:40px; margin-bottom:6px; letter-spacing:4px; animation: bdayWiggle 1.6s ease-in-out infinite; }
+        @keyframes bdayWiggle { 0%,100%{transform:rotate(-6deg)} 50%{transform:rotate(6deg)} }
+        .birthday-title { font-size:15px; font-weight:800; letter-spacing:2px; text-transform:uppercase; color:rgba(255,255,255,.9); margin-bottom:4px; text-shadow:0 1px 4px rgba(0,0,0,.2); }
+        .birthday-name { font-size:28px; font-weight:900; color:#fff; text-shadow:0 2px 8px rgba(0,0,0,.25); margin-bottom:10px; line-height:1.25; word-break:break-word; }
+        .birthday-msg { font-size:14.5px; font-weight:600; color:rgba(255,255,255,.95); background:rgba(255,255,255,.16); border-radius:14px; padding:12px 14px; margin-bottom:22px; line-height:1.5; }
+        .birthday-close-btn { background:#fff; color:#7c3aed; font-weight:800; padding:13px 30px; border-radius:30px; border:none; font-size:15px; box-shadow:0 6px 18px rgba(0,0,0,.2); cursor:pointer; }
+        .birthday-close-btn:active { transform:scale(.95); }
+        .confetti-piece {
+            position:absolute; top:-12px; width:9px; height:14px; opacity:.9;
+            animation-name: confettiFall; animation-timing-function: linear; animation-iteration-count: infinite;
+            border-radius:2px;
+        }
+        @keyframes confettiFall {
+            0% { transform: translateY(-20px) rotate(0deg); opacity:1; }
+            100% { transform: translateY(480px) rotate(540deg); opacity:.2; }
+        }
     </style>
 </head>
 <body>
@@ -752,6 +791,16 @@
         </div>
     </div>
 
+    <!-- ─── BIRTHDAY POP-UP 🎉 ─────────────────────────────────── -->
+    <div id="birthday-overlay" class="birthday-overlay" onclick="if(event.target===this)closeBirthdayModal()">
+        <div class="birthday-card" id="birthday-card">
+            <div class="birthday-emoji-row">🎉🎂🥳</div>
+            <div class="birthday-title">It's a special day!</div>
+            <div class="birthday-name" id="birthday-name-text"></div>
+            <div class="birthday-msg" id="birthday-msg-text"></div>
+            <button class="birthday-close-btn" onclick="closeBirthdayModal()">🎁 Yay, let's celebrate!</button>
+        </div>
+    </div>
 
     <!-- ─── FACE LOGIN MODAL ─────────────────────────────────── -->
     <div id="face-login-modal" class="modal" style="display:none;">
@@ -1876,6 +1925,56 @@
             document.getElementById('pin-inp').value='';
             sendTelegramClockin(s, time, lateMsg, photoData);
             render();
+            if (isBirthdayToday(s.birthday)) showBirthdayPopup(s.name);
+        }
+
+        // ═══════════════════════════════════════════════
+        // BIRTHDAY POP-UP 🎉
+        // ═══════════════════════════════════════════════
+        function isBirthdayToday(birthday) {
+            if (!birthday) return false;
+            const parts = birthday.split('-');
+            if (parts.length !== 3) return false;
+            const [, mm, dd] = parts;
+            const now = new Date();
+            return parseInt(mm,10) === (now.getMonth()+1) && parseInt(dd,10) === now.getDate();
+        }
+
+        const BIRTHDAY_MESSAGES = [
+            "Wishing you a day as amazing as you are! The whole Sir Ramos Drugstore family is cheering for you today! 🎈",
+            "Hope your day is filled with cake, laughter, and zero deductions! Happy Birthday! 🍰",
+            "Another year, another reason to celebrate you! Thanks for being part of the team. 🌟",
+            "Cheers to you today! May your birthday be as awesome as your work ethic. 🥂",
+            "Sending confetti and good vibes your way — enjoy your special day! 🎊"
+        ];
+
+        function spawnConfetti(container) {
+            container.querySelectorAll('.confetti-piece').forEach(el => el.remove());
+            const colors = ['#fff','#ffe066','#ff6ec4','#7ee8fa','#a0ffa8','#ffd166'];
+            const count = 26;
+            for (let i = 0; i < count; i++) {
+                const p = document.createElement('div');
+                p.className = 'confetti-piece';
+                p.style.left = Math.random()*100 + '%';
+                p.style.background = colors[Math.floor(Math.random()*colors.length)];
+                p.style.animationDuration = (2 + Math.random()*1.8) + 's';
+                p.style.animationDelay = (Math.random()*1.5) + 's';
+                if (Math.random() > 0.5) p.style.borderRadius = '50%';
+                container.appendChild(p);
+            }
+        }
+
+        function showBirthdayPopup(name) {
+            document.getElementById('birthday-name-text').textContent = `Happy Birthday, ${name}! 🎂`;
+            const msg = BIRTHDAY_MESSAGES[Math.floor(Math.random()*BIRTHDAY_MESSAGES.length)];
+            document.getElementById('birthday-msg-text').textContent = msg;
+            const overlay = document.getElementById('birthday-overlay');
+            spawnConfetti(document.getElementById('birthday-card'));
+            overlay.style.display = 'flex';
+        }
+
+        function closeBirthdayModal() {
+            document.getElementById('birthday-overlay').style.display = 'none';
         }
 
         function clockOut() {
