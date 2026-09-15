@@ -710,6 +710,9 @@
                 <div class="form-group"><label>Daily Rate (₱)</label><input type="number" id="edit-daily-rate" readonly style="background:var(--surface-3);color:var(--text-2);"></div>
                 <div class="form-group"><label>OT Rate (₱/hr)</label><input type="number" id="edit-ot-rate" readonly style="background:var(--surface-3);color:var(--text-2);"></div>
             </div>
+            <div style="display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:10px;">
+                <div class="form-group"><label>Rate/Position Effective Date <span style="font-weight:400;color:var(--text-2);">(used only if Position above is changed — e.g. a promotion)</span></label><input type="date" id="edit-rate-effective-date"></div>
+            </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
                 <div class="form-group"><label>Joining Date</label><input type="date" id="edit-joining-date" oninput="autoFillEditRegDate()"></div>
                 <div class="form-group"><label>Regularization Date</label><input type="date" id="edit-reg-date" readonly style="background:var(--surface-3);color:var(--text-2);"></div>
@@ -1354,7 +1357,8 @@
                 faceThreshold: 0.5
             },
             start: '', end: '', view: 'clock', viewStaff: '', editingRecord: null, adminMode: false,
-            incentives: {}  // keyed by staffId: { enabled, amount, label }
+            incentives: {},  // keyed by staffId: { enabled, amount, label }
+            thirteenthYear: new Date().getFullYear()
         };
 
         const RATES = { regular: { daily: 650, ot: 68 }, senior: { daily: 700, ot: 73 }, trainee: { daily: 500, ot: 53 }, provisionary: { daily: 400, ot: 37 } };
@@ -1369,6 +1373,7 @@
             { id: 'view',      label: 'DTR',       icon: '📋', admin: true  },
             { id: 'payroll',   label: 'Payroll',   icon: '💰', admin: true  },
             { id: 'deductions',label: 'Deductions',icon: '💸', admin: true  },
+            { id: 'thirteenth',label: '13th Month', icon: '🧧', admin: true  },
             { id: 'staff',     label: 'Staff',     icon: '👥', admin: true  },
             { id: 'export',    label: 'Export',    icon: '📊', admin: true  },
             { id: 'devices',   label: 'Devices',   icon: '🔐', admin: true  },
@@ -1562,7 +1567,7 @@
 
             updateAdminStatus();
 
-            const views = { clock: renderClock, view: renderView, payroll: renderPayroll, deductions: renderDeductions, staff: renderStaff, export: renderExport, devices: renderDevices, firebase: renderFirebase, settings: renderSettings };
+            const views = { clock: renderClock, view: renderView, payroll: renderPayroll, deductions: renderDeductions, thirteenth: renderThirteenth, staff: renderStaff, export: renderExport, devices: renderDevices, firebase: renderFirebase, settings: renderSettings };
             document.getElementById('view').innerHTML = views[app.view] ? views[app.view]() : '';
         }
 
@@ -1612,6 +1617,7 @@
             document.getElementById('edit-pin').value = s.pin;
             document.getElementById('edit-daily-rate').value = s.dailyRate || RATES[s.position].daily;
             document.getElementById('edit-ot-rate').value = s.otRate || RATES[s.position].ot;
+            document.getElementById('edit-rate-effective-date').value = today();
             document.getElementById('edit-joining-date').value = s.joiningDate || '';
             document.getElementById('edit-reg-date').value = s.regularizationDate || '';
             document.getElementById('edit-birthday').value = s.birthday || '';
@@ -1633,6 +1639,7 @@
             const contactNumber=document.getElementById('edit-contact').value.trim();
             const status=document.getElementById('edit-status').value;
             const terminationDate=document.getElementById('edit-term-date').value;
+            const rateEffectiveDate=document.getElementById('edit-rate-effective-date').value || today();
             if (!name||!pin) { showMsg('edit-msg','❌ Fill Name and PIN fields','err'); return; }
             if (!/^\d{4}$/.test(pin)) { showMsg('edit-msg','❌ PIN must be 4 digits','err'); return; }
             const employeeNumber = generateEmployeeNumber(name, birthday);
@@ -1641,11 +1648,20 @@
             const otRate = RATES[position].ot;
             const s=app.staff.find(x=>x.id===currentEditingStaffId);
             if (s) {
+                const positionChanged = s.position !== position;
+                if (!s.rateHistory || !s.rateHistory.length) {
+                    // backfill history for staff that predate rate-history tracking
+                    s.rateHistory = [{ effectiveDate: s.joiningDate || joiningDate || '1970-01-01', dailyRate: s.dailyRate || dailyRate, position: s.position }];
+                }
                 s.name=name; s.position=position; s.pin=pin;
                 s.employeeNumber=employeeNumber; s.joiningDate=joiningDate; s.birthday=birthday;
                 s.contactNumber=contactNumber; s.dailyRate=dailyRate; s.otRate=otRate;
                 s.regularizationDate=regularizationDate; s.status=status||'onboard';
                 s.terminationDate=terminationDate||'';
+                if (positionChanged) {
+                    s.rateHistory.push({ effectiveDate: rateEffectiveDate, dailyRate, position });
+                    s.rateHistory.sort((a,b)=> new Date(a.effectiveDate) - new Date(b.effectiveDate));
+                }
                 saveData(); closeEditModal(); render();
             }
         }
@@ -2432,6 +2448,130 @@
         function deleteDeduction(id){if(!confirm('Delete this deduction?'))return;app.deductions=app.deductions.filter(d=>d.id!==id);saveData();render();}
 
         // ═══════════════════════════════════════════════
+        // 13TH MONTH PAY
+        // Formula:
+        //   Per month worked: Monthly Basic Salary = that month's Daily Rate × 22
+        //     (Daily Rate is looked up from the employee's rate/position history —
+        //      e.g. ₱500/day for months 1-3, then ₱650/day from month 4 onward after a promotion)
+        //   1. Total Basic Salary for Months Worked = Σ Monthly Basic Salary per worked month
+        //   2. Absence Deduction   = Σ per month: (that month's Monthly Basic Salary ÷ that month's
+        //                            Working Days) × that month's Absent Days
+        //                            — Working Days & Absent Days pulled straight from this
+        //                              employee's own DTR records for the selected year.
+        //   3. Late Deduction      = Total Late Deductions for the year (peso, from DTR late logs)
+        //   4. Basic Salary Actually Earned = (1) − (2) − (3)
+        //   5. 13th Month Pay      = (4) ÷ 12
+        // ═══════════════════════════════════════════════
+        function getStaffRateHistory(s) {
+            if (s.rateHistory && s.rateHistory.length) return [...s.rateHistory].sort((a,b)=> new Date(a.effectiveDate) - new Date(b.effectiveDate));
+            return [{ effectiveDate: s.joiningDate || '1970-01-01', dailyRate: s.dailyRate || RATES[s.position].daily, position: s.position }];
+        }
+        function getRateForDate(s, dateObj) {
+            const hist = getStaffRateHistory(s);
+            let applicable = hist[0];
+            for (const h of hist) { if (new Date(h.effectiveDate) <= dateObj) applicable = h; else break; }
+            return applicable.dailyRate;
+        }
+        function get13thMonthYearStats(staffId, year) {
+            const staff = app.staff.find(s => s.id === staffId);
+            const monthly = [];
+            for (let m = 0; m < 12; m++) {
+                const mStart = new Date(year, m, 1), mEnd = new Date(year, m + 1, 0, 23, 59, 59);
+                const recs = app.records.filter(r => { if (r.sid !== staffId) return false; const rd = new Date(r.date); return rd >= mStart && rd <= mEnd; });
+                let workingDays = 0, absentDays = 0;
+                recs.forEach(r => { if (r.status !== 'rest') { workingDays++; if (r.status === 'absent') absentDays++; } });
+                const dailyRate = getRateForDate(staff, mEnd);
+                const monthlySalary = dailyRate * 22;
+                const absenceDeduction = workingDays > 0 ? (monthlySalary / workingDays) * absentDays : 0;
+                monthly.push({ month: m, dailyRate, monthlySalary, workingDays, absentDays, absenceDeduction, worked: workingDays > 0 });
+            }
+            const workedMonths = monthly.filter(x => x.worked);
+            const workingDays = workedMonths.reduce((s,x)=>s+x.workingDays, 0);
+            const absentDays = workedMonths.reduce((s,x)=>s+x.absentDays, 0);
+            const base = workedMonths.reduce((s,x)=>s+x.monthlySalary, 0);
+            const absenceDeduction = workedMonths.reduce((s,x)=>s+x.absenceDeduction, 0);
+            const yStart = new Date(year, 0, 1), yEnd = new Date(year, 11, 31, 23, 59, 59);
+            const lateDeds = app.deductions.filter(d => { if (d.staffId !== staffId || d.type !== 'late') return false; const dd = new Date(d.deductionDate); return dd >= yStart && dd <= yEnd; });
+            const totalLates = lateDeds.reduce((sum, d) => sum + d.amount, 0);
+            return { monthly, workedMonths, workingDays, absentDays, monthsWorked: workedMonths.length, base, absenceDeduction, totalLates, lateCount: lateDeds.length };
+        }
+        function compute13thMonth(staffId, year) {
+            const staff = app.staff.find(s => s.id === staffId);
+            if (!staff) return null;
+            const st = get13thMonthYearStats(staffId, year);
+            const base = roundUp(st.base);
+            const absenceDeduction = roundUp(st.absenceDeduction);
+            const lateDeduction = roundUp(st.totalLates);
+            const earnedSalary = base - absenceDeduction - lateDeduction;
+            const bonus = roundUp(earnedSalary / 12);
+            return { staff, base, absenceDeduction, lateDeduction, earnedSalary, bonus, ...st };
+        }
+        function renderThirteenth() {
+            if (!app.adminMode) return adminRequired();
+            return `
+                <div class="page-title">🧧 13th Month Pay</div>
+                <div class="card">
+                    <div class="form-grid">
+                        <div class="form-group"><label>Year</label><input type="number" id="thirteenth-year" value="${app.thirteenthYear}" min="2000" max="2100" onchange="app.thirteenthYear=parseInt(this.value)||new Date().getFullYear();render()"></div>
+                    </div>
+                    <p style="font-size:12px;color:var(--text-2);margin-top:8px;">Working days, absences and lates below are pulled straight from each employee's own DTR records for the selected year.</p>
+                </div>
+                <div id="thirteenth-cards-container">${renderThirteenthCards()}</div>`;
+        }
+        const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        function renderThirteenthCards() {
+            const year = app.thirteenthYear || new Date().getFullYear();
+            return app.staff.filter(s => !s.status || s.status === 'onboard').map(s => {
+                const d = compute13thMonth(s.id, year);
+                const monthRows = d.workedMonths.map(x => `<div class="payroll-line">&nbsp;&nbsp;${MONTH_NAMES[x.month]} — ₱${x.dailyRate.toLocaleString()}/day × 22: <span>₱${roundUp(x.monthlySalary).toLocaleString()}</span></div>`).join('');
+                return `<div class="card">
+                    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;">
+                        <div><div class="payroll-name">${d.staff.name}</div><span class="badge badge-blue">${d.staff.position}</span></div>
+                        <div class="payroll-net">₱${d.bonus.toLocaleString()}</div>
+                    </div>
+                    <div class="payroll-grid">
+                        <div class="payroll-line" style="font-weight:600;">1. Basic Salary by Month (${d.monthsWorked} month(s) worked):</div>
+                        ${monthRows}
+                        <div class="payroll-line">&nbsp;&nbsp;Total Basic Salary: <span>₱${d.base.toLocaleString()}</span></div>
+                        <div class="payroll-line">&nbsp;&nbsp;Total Working Days / Absent Days (${year}): <span>${d.workingDays} / ${d.absentDays}</span></div>
+                        <div class="payroll-line">2. Absence Deduction: <span class="payroll-deduct">-₱${d.absenceDeduction.toLocaleString()}</span></div>
+                        <div class="payroll-line">&nbsp;&nbsp;Total Lates (${year}), ${d.lateCount} instance(s): <span>₱${d.totalLates.toLocaleString()}</span></div>
+                        <div class="payroll-line">3. Late Deduction: <span class="payroll-deduct">-₱${d.lateDeduction.toLocaleString()}</span></div>
+                        <div class="payroll-line">4. Basic Salary Actually Earned: <span>₱${d.earnedSalary.toLocaleString()}</span></div>
+                        <div class="payroll-line">5. 13th Month Pay (÷ 12): <span><strong>₱${d.bonus.toLocaleString()}</strong></span></div>
+                    </div>
+                    <button class="btn-info btn-sm" onclick="print13thMonth('${s.id}')">🖨️ Print 13th Month Invoice</button>
+                </div>`;
+            }).join('');
+        }
+        function print13thMonth(staffId) {
+            const year = app.thirteenthYear || new Date().getFullYear();
+            const d = compute13thMonth(staffId, year);
+            if (!d) return;
+            const monthRows = d.workedMonths.map(x => `<tr><td style="padding-left:24px;">${MONTH_NAMES[x.month]}</td><td>₱${x.dailyRate.toLocaleString()}/day</td><td>₱${x.dailyRate.toLocaleString()} × 22 = ₱${roundUp(x.monthlySalary).toLocaleString()}</td></tr>`).join('');
+            const pw = window.open('','','width=800,height=700');
+            pw.document.write(`<!DOCTYPE html><html><head><title>13th Month Bonus - ${d.staff.name}</title><style>*{margin:0;padding:0;box-sizing:border-box;}body{font-family:-apple-system,Arial,sans-serif;padding:40px;background:white;}.payslip{max-width:680px;margin:0 auto;border:2px solid #1a2332;border-radius:12px;overflow:hidden;}.header{background:#1a2332;color:white;padding:28px;text-align:center;}.header h1{font-size:24px;margin-bottom:6px;}.header p{opacity:.7;font-size:14px;}table{width:100%;border-collapse:collapse;}th{background:#f1f5f9;padding:12px;text-align:left;font-size:12px;color:#475569;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid #e2e8f0;}td{padding:12px;border-bottom:1px solid #f1f5f9;font-size:14px;}.total{background:#1a2332;color:white;font-weight:bold;font-size:16px;}.sigs{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin:32px 28px;}.sig-box{text-align:center;}.sig-line{border-top:2px solid #e2e8f0;margin-top:48px;padding-top:10px;font-size:13px;color:#475569;}@media print{.no-print{display:none;}}</style></head>
+            <body><div class="payslip"><div class="header"><h1>SIR RAMOS DRUGSTORE</h1><p>13TH-MONTH PAY COMPUTATION — ${year}</p></div>
+            <table>
+                <tr><th>Employee</th><td colspan="2"><strong>${d.staff.name}</strong></td></tr>
+                <tr><th>Position</th><td colspan="2">${d.staff.position}</td></tr>
+                <tr><th>1. Basic Salary by Month</th><td colspan="2">${d.monthsWorked} month(s) worked</td></tr>
+                ${monthRows}
+                <tr><th>&nbsp;&nbsp;Total Basic Salary</th><td colspan="2">₱${d.base.toLocaleString()}</td></tr>
+                <tr><th>&nbsp;&nbsp;Total Working Days (${year})</th><td colspan="2">${d.workingDays}</td></tr>
+                <tr><th>&nbsp;&nbsp;Absent Days (${year})</th><td colspan="2">${d.absentDays}</td></tr>
+                <tr><th style="color:#ef4444;">2. Absence Deduction</th><td colspan="2" style="color:#ef4444;">Σ (month's salary ÷ month's working days × month's absences) = -₱${d.absenceDeduction.toLocaleString()}</td></tr>
+                <tr><th>&nbsp;&nbsp;Total Lates (${year})</th><td colspan="2">${d.lateCount} instance(s) = ₱${d.totalLates.toLocaleString()}</td></tr>
+                <tr><th style="color:#ef4444;">3. Late Deduction</th><td colspan="2" style="color:#ef4444;">-₱${d.lateDeduction.toLocaleString()}</td></tr>
+                <tr><th>4. Basic Salary Actually Earned</th><td colspan="2">₱${d.base.toLocaleString()} − ₱${d.absenceDeduction.toLocaleString()} − ₱${d.lateDeduction.toLocaleString()} = ₱${d.earnedSalary.toLocaleString()}</td></tr>
+                <tr class="total"><th>5. 13TH MONTH PAY</th><td colspan="2">₱${d.earnedSalary.toLocaleString()} ÷ 12 = ₱${d.bonus.toLocaleString()}</td></tr>
+            </table>
+            <div class="sigs"><div class="sig-box"><div class="sig-line">Employee Signature</div></div><div class="sig-box"><div class="sig-line">Authorized Signature</div></div></div>
+            </div><div class="no-print" style="text-align:center;margin-top:24px;"><button onclick="window.print()" style="padding:12px 28px;background:#1a2332;color:white;border:none;border-radius:8px;font-size:15px;cursor:pointer;margin-right:10px;">🖨️ Print</button><button onclick="window.close()" style="padding:12px 28px;background:#e2e8f0;border:none;border-radius:8px;font-size:15px;cursor:pointer;">Close</button></div></body></html>`);
+            pw.document.close();
+        }
+
+        // ═══════════════════════════════════════════════
         // STAFF
         // ═══════════════════════════════════════════════
         function generateEmployeeNumber(name, birthday) {
@@ -2534,7 +2674,7 @@
             const regularizationDate = calcRegularizationDate(joiningDate);
             const dailyRate = RATES[position].daily;
             const otRate = RATES[position].ot;
-            app.staff.push({id:'staff-'+Date.now(),name,position,pin,employeeNumber,joiningDate,birthday,contactNumber,dailyRate,otRate,regularizationDate,status:status||'onboard',terminationDate:terminationDate||''});
+            app.staff.push({id:'staff-'+Date.now(),name,position,pin,employeeNumber,joiningDate,birthday,contactNumber,dailyRate,otRate,regularizationDate,status:status||'onboard',terminationDate:terminationDate||'',rateHistory:[{effectiveDate:joiningDate||today(),dailyRate,position}]});
             saveData();
             ['new-name','new-pin','new-joining-date','new-birthday','new-contact','new-term-date'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
             document.getElementById('new-empnum').value='';
