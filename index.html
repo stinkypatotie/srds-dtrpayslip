@@ -523,6 +523,7 @@
         .payroll-line span { font-weight: 700; color: var(--text-1); }
         .payroll-net { font-size: 22px; font-weight: 800; color: var(--navy); }
         .payroll-deduct { color: var(--red); font-weight: 700; }
+        .thirteenth-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 
         /* ═══════════════════════════════════════════════
            RESPONSIVE: MOBILE
@@ -536,6 +537,7 @@
             .page-title { font-size: 19px; }
             th, td { padding: 10px 8px; }
             table { font-size: 12px; }
+            .thirteenth-columns { grid-template-columns: 1fr; }
         }
 
         /* ═══════════════════════════════════════════════
@@ -710,8 +712,9 @@
                 <div class="form-group"><label>Daily Rate (₱)</label><input type="number" id="edit-daily-rate" readonly style="background:var(--surface-3);color:var(--text-2);"></div>
                 <div class="form-group"><label>OT Rate (₱/hr)</label><input type="number" id="edit-ot-rate" readonly style="background:var(--surface-3);color:var(--text-2);"></div>
             </div>
-            <div style="display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:10px;">
-                <div class="form-group"><label>Rate/Position Effective Date <span style="font-weight:400;color:var(--text-2);">(used only if Position above is changed — e.g. a promotion)</span></label><input type="date" id="edit-rate-effective-date"></div>
+            <div style="margin-bottom:10px;">
+                <button type="button" class="btn-info btn-sm" onclick="openRateHistoryModal(currentEditingStaffId);closeEditModal()">📈 Manage Rate / Position History</button>
+                <p style="font-size:11px;color:var(--text-2);margin-top:4px;">Set the exact date each promotion/position change took effect — this is what the 13th Month Pay calculator uses.</p>
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
                 <div class="form-group"><label>Joining Date</label><input type="date" id="edit-joining-date" oninput="autoFillEditRegDate()"></div>
@@ -736,6 +739,21 @@
             <div style="display:flex;gap:10px;margin-top:16px;">
                 <button class="btn-primary" onclick="saveEmployeeUpdate()" style="flex:1;">Save Changes</button>
                 <button class="btn-muted" onclick="closeEditModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ─── RATE / POSITION HISTORY MODAL ───────────────────────── -->
+    <div id="rate-history-modal" class="modal" style="display:none;">
+        <div class="modal-content">
+            <div class="modal-drag"></div>
+            <div class="modal-title">📈 Rate / Position History</div>
+            <p style="font-size:12px;color:var(--text-2);margin-bottom:14px;">Set the date each position took effect for this employee. Leave a date blank if they never held that position. This is what the 13th Month Pay calculator uses to apply the right rate to each month.</p>
+            <div id="rate-history-rows"></div>
+            <div id="rate-history-msg" class="msg" style="display:none;"></div>
+            <div style="display:flex;gap:10px;margin-top:16px;">
+                <button class="btn-primary" onclick="saveRateHistory()" style="flex:1;">💾 Save</button>
+                <button class="btn-muted" onclick="closeRateHistoryModal()">Cancel</button>
             </div>
         </div>
     </div>
@@ -1617,7 +1635,6 @@
             document.getElementById('edit-pin').value = s.pin;
             document.getElementById('edit-daily-rate').value = s.dailyRate || RATES[s.position].daily;
             document.getElementById('edit-ot-rate').value = s.otRate || RATES[s.position].ot;
-            document.getElementById('edit-rate-effective-date').value = today();
             document.getElementById('edit-joining-date').value = s.joiningDate || '';
             document.getElementById('edit-reg-date').value = s.regularizationDate || '';
             document.getElementById('edit-birthday').value = s.birthday || '';
@@ -1639,7 +1656,6 @@
             const contactNumber=document.getElementById('edit-contact').value.trim();
             const status=document.getElementById('edit-status').value;
             const terminationDate=document.getElementById('edit-term-date').value;
-            const rateEffectiveDate=document.getElementById('edit-rate-effective-date').value || today();
             if (!name||!pin) { showMsg('edit-msg','❌ Fill Name and PIN fields','err'); return; }
             if (!/^\d{4}$/.test(pin)) { showMsg('edit-msg','❌ PIN must be 4 digits','err'); return; }
             const employeeNumber = generateEmployeeNumber(name, birthday);
@@ -1648,20 +1664,14 @@
             const otRate = RATES[position].ot;
             const s=app.staff.find(x=>x.id===currentEditingStaffId);
             if (s) {
-                const positionChanged = s.position !== position;
-                if (!s.rateHistory || !s.rateHistory.length) {
-                    // backfill history for staff that predate rate-history tracking
-                    s.rateHistory = [{ effectiveDate: s.joiningDate || joiningDate || '1970-01-01', dailyRate: s.dailyRate || dailyRate, position: s.position }];
-                }
+                // Note: rate/position HISTORY (used by the 13th Month Pay calculator) is managed
+                // separately via the "Rate / Position History" modal — this only updates the
+                // employee's current-facing position/rate fields.
                 s.name=name; s.position=position; s.pin=pin;
                 s.employeeNumber=employeeNumber; s.joiningDate=joiningDate; s.birthday=birthday;
                 s.contactNumber=contactNumber; s.dailyRate=dailyRate; s.otRate=otRate;
                 s.regularizationDate=regularizationDate; s.status=status||'onboard';
                 s.terminationDate=terminationDate||'';
-                if (positionChanged) {
-                    s.rateHistory.push({ effectiveDate: rateEffectiveDate, dailyRate, position });
-                    s.rateHistory.sort((a,b)=> new Date(a.effectiveDate) - new Date(b.effectiveDate));
-                }
                 saveData(); closeEditModal(); render();
             }
         }
@@ -2472,6 +2482,42 @@
             for (const h of hist) { if (new Date(h.effectiveDate) <= dateObj) applicable = h; else break; }
             return applicable.dailyRate;
         }
+        const POSITION_LABELS = { provisionary: 'Provisionary', trainee: 'Trainee', regular: 'Regular I', senior: 'Regular II' };
+        const POSITION_ORDER = ['provisionary', 'trainee', 'regular', 'senior'];
+        let currentRateHistoryStaffId = null;
+        function openRateHistoryModal(staffId) {
+            const s = app.staff.find(x => x.id === staffId); if (!s) return;
+            currentRateHistoryStaffId = staffId;
+            const hist = getStaffRateHistory(s);
+            document.getElementById('rate-history-rows').innerHTML = POSITION_ORDER.map(pos => {
+                const entry = hist.find(h => h.position === pos);
+                return `<div style="display:grid;grid-template-columns:150px 1fr;align-items:center;gap:10px;margin-bottom:12px;">
+                    <label style="margin:0;font-size:13px;font-weight:600;">${POSITION_LABELS[pos]}<br><span style="font-weight:400;color:var(--text-2);font-size:11px;">₱${RATES[pos].daily}/day</span></label>
+                    <input type="date" id="rate-hist-${pos}" value="${entry ? entry.effectiveDate : ''}">
+                </div>`;
+            }).join('');
+            document.getElementById('rate-history-msg').style.display = 'none';
+            document.getElementById('rate-history-modal').style.display = 'flex';
+        }
+        function closeRateHistoryModal() { document.getElementById('rate-history-modal').style.display = 'none'; currentRateHistoryStaffId = null; }
+        function saveRateHistory() {
+            if (!currentRateHistoryStaffId) return;
+            const s = app.staff.find(x => x.id === currentRateHistoryStaffId); if (!s) return;
+            const entries = [];
+            POSITION_ORDER.forEach(pos => {
+                const val = document.getElementById('rate-hist-' + pos).value;
+                if (val) entries.push({ effectiveDate: val, dailyRate: RATES[pos].daily, position: pos });
+            });
+            if (!entries.length) { showMsg('rate-history-msg', '❌ Set at least one effective date', 'err'); return; }
+            entries.sort((a, b) => new Date(a.effectiveDate) - new Date(b.effectiveDate));
+            s.rateHistory = entries;
+            // keep the employee's current-facing position/rate in sync with the latest entry
+            const latest = entries[entries.length - 1];
+            s.position = latest.position; s.dailyRate = latest.dailyRate; s.otRate = RATES[latest.position].ot;
+            saveData();
+            showMsg('rate-history-msg', '✅ Saved!', 'ok');
+            setTimeout(() => { closeRateHistoryModal(); render(); }, 700);
+        }
         function get13thMonthYearStats(staffId, year) {
             const staff = app.staff.find(s => s.id === staffId);
             const monthly = [];
@@ -2509,7 +2555,7 @@
         function renderThirteenth() {
             if (!app.adminMode) return adminRequired();
             return `
-                <div class="page-title">🧧 13th Month Pay</div>
+                <div class="page-title">🧧 13th Month Pay — ${app.thirteenthYear}</div>
                 <div class="card">
                     <div class="form-grid">
                         <div class="form-group"><label>Year</label><input type="number" id="thirteenth-year" value="${app.thirteenthYear}" min="2000" max="2100" onchange="app.thirteenthYear=parseInt(this.value)||new Date().getFullYear();render()"></div>
@@ -2526,21 +2572,31 @@
                 const monthRows = d.workedMonths.map(x => `<div class="payroll-line">&nbsp;&nbsp;${MONTH_NAMES[x.month]} — ₱${x.dailyRate.toLocaleString()}/day × 22: <span>₱${roundUp(x.monthlySalary).toLocaleString()}</span></div>`).join('');
                 return `<div class="card">
                     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;">
-                        <div><div class="payroll-name">${d.staff.name}</div><span class="badge badge-blue">${d.staff.position}</span></div>
+                        <div><div class="payroll-name">${d.staff.name}</div><span class="badge badge-blue">${d.staff.position}</span> <span class="badge" style="background:var(--surface-3);color:var(--text-2);">Year ${year}</span></div>
                         <div class="payroll-net">₱${d.bonus.toLocaleString()}</div>
                     </div>
-                    <div class="payroll-grid">
-                        <div class="payroll-line" style="font-weight:600;">1. Basic Salary by Month (${d.monthsWorked} month(s) worked):</div>
-                        ${monthRows}
-                        <div class="payroll-line">&nbsp;&nbsp;Total Basic Salary: <span>₱${d.base.toLocaleString()}</span></div>
-                        <div class="payroll-line">&nbsp;&nbsp;Total Working Days / Absent Days (${year}): <span>${d.workingDays} / ${d.absentDays}</span></div>
-                        <div class="payroll-line">2. Absence Deduction: <span class="payroll-deduct">-₱${d.absenceDeduction.toLocaleString()}</span></div>
-                        <div class="payroll-line">&nbsp;&nbsp;Total Lates (${year}), ${d.lateCount} instance(s): <span>₱${d.totalLates.toLocaleString()}</span></div>
-                        <div class="payroll-line">3. Late Deduction: <span class="payroll-deduct">-₱${d.lateDeduction.toLocaleString()}</span></div>
-                        <div class="payroll-line">4. Basic Salary Actually Earned: <span>₱${d.earnedSalary.toLocaleString()}</span></div>
-                        <div class="payroll-line">5. 13th Month Pay (÷ 12): <span><strong>₱${d.bonus.toLocaleString()}</strong></span></div>
+                    <div class="thirteenth-columns">
+                        <div>
+                            <div style="font-size:12px;font-weight:700;color:var(--text-2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Basic Salary Computation</div>
+                            <div class="payroll-grid">
+                                <div class="payroll-line" style="font-weight:600;">1. By Month (${d.monthsWorked} worked in ${year}):</div>
+                                ${monthRows}
+                                <div class="payroll-line">&nbsp;&nbsp;Total Basic Salary: <span>₱${d.base.toLocaleString()}</span></div>
+                            </div>
+                        </div>
+                        <div>
+                            <div style="font-size:12px;font-weight:700;color:var(--text-2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Deductions &amp; Final Computation</div>
+                            <div class="payroll-grid">
+                                <div class="payroll-line">&nbsp;&nbsp;Working Days / Absent Days (${year}): <span>${d.workingDays} / ${d.absentDays}</span></div>
+                                <div class="payroll-line">2. Absence Deduction: <span class="payroll-deduct">-₱${d.absenceDeduction.toLocaleString()}</span></div>
+                                <div class="payroll-line">&nbsp;&nbsp;Total Lates (${year}), ${d.lateCount} instance(s): <span>₱${d.totalLates.toLocaleString()}</span></div>
+                                <div class="payroll-line">3. Late Deduction: <span class="payroll-deduct">-₱${d.lateDeduction.toLocaleString()}</span></div>
+                                <div class="payroll-line">4. Basic Salary Actually Earned: <span>₱${d.earnedSalary.toLocaleString()}</span></div>
+                                <div class="payroll-line">5. 13th Month Pay (÷ 12): <span><strong>₱${d.bonus.toLocaleString()}</strong></span></div>
+                            </div>
+                        </div>
                     </div>
-                    <button class="btn-info btn-sm" onclick="print13thMonth('${s.id}')">🖨️ Print 13th Month Invoice</button>
+                    <button class="btn-info btn-sm" onclick="print13thMonth('${s.id}')" style="margin-top:14px;">🖨️ Print 13th Month Invoice</button>
                 </div>`;
             }).join('');
         }
@@ -2647,7 +2703,7 @@
                         const pos = s.position;
                         const dr = s.dailyRate || RATES[pos].daily;
                         const otr = s.otRate || RATES[pos].ot;
-                        return '<div class="card" style="padding:16px;margin-bottom:12px;"><div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;"><div><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;"><span style="font-weight:800;font-size:16px;color:var(--text-1);">'+s.name+'</span><span style="font-size:12px;font-weight:700;color:var(--text-3);background:var(--surface-3);padding:2px 8px;border-radius:20px;">'+empNum+'</span>'+statusBadge(s.status)+'</div><div style="font-size:12px;color:var(--text-2);margin-bottom:8px;">'+pos.charAt(0).toUpperCase()+pos.slice(1)+' · ₱'+dr+'/day · ₱'+otr+'/hr OT</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:4px 16px;">'+(s.joiningDate?'<div style="font-size:12px;color:var(--text-2);">📅 Joined: <strong>'+fmtDatePH(s.joiningDate)+'</strong></div>':'')+(s.regularizationDate?'<div style="font-size:12px;color:var(--text-2);">🎓 Regularized: <strong>'+fmtDatePH(s.regularizationDate)+'</strong></div>':'')+(s.birthday?'<div style="font-size:12px;color:var(--text-2);">🎂 Birthday: <strong>'+fmtDatePH(s.birthday)+'</strong></div>':'')+(s.contactNumber?'<div style="font-size:12px;color:var(--text-2);">📱 Contact: <strong>'+s.contactNumber+'</strong></div>':'')+(s.terminationDate?'<div style="font-size:12px;color:var(--text-2);">📌 '+(s.status==='resigned'?'Resigned':'Terminated')+': <strong>'+fmtDatePH(s.terminationDate)+'</strong></div>':'')+'</div></div><div class="action-buttons" style="flex-shrink:0;"><button class="btn-warning btn-sm" onclick="openEditModal(\''+s.id+'\')">✏️ Edit</button>'+(faceDescriptorsMap[s.id]?'<button class="btn-sm" style="background:#dcfce7;color:var(--green-dark);" onclick="confirmDeleteFace(\''+s.id+'\')">👤✅</button>':'<button class="btn-info btn-sm" onclick="openFaceEnrollModal(\''+s.id+'\')">📸 Face</button>')+'<button class="btn-danger btn-sm" onclick="delStaff(\''+s.id+'\')">🗑️</button></div></div></div>';
+                        return '<div class="card" style="padding:16px;margin-bottom:12px;"><div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;"><div><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;"><span style="font-weight:800;font-size:16px;color:var(--text-1);">'+s.name+'</span><span style="font-size:12px;font-weight:700;color:var(--text-3);background:var(--surface-3);padding:2px 8px;border-radius:20px;">'+empNum+'</span>'+statusBadge(s.status)+'</div><div style="font-size:12px;color:var(--text-2);margin-bottom:8px;">'+pos.charAt(0).toUpperCase()+pos.slice(1)+' · ₱'+dr+'/day · ₱'+otr+'/hr OT</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:4px 16px;">'+(s.joiningDate?'<div style="font-size:12px;color:var(--text-2);">📅 Joined: <strong>'+fmtDatePH(s.joiningDate)+'</strong></div>':'')+(s.regularizationDate?'<div style="font-size:12px;color:var(--text-2);">🎓 Regularized: <strong>'+fmtDatePH(s.regularizationDate)+'</strong></div>':'')+(s.birthday?'<div style="font-size:12px;color:var(--text-2);">🎂 Birthday: <strong>'+fmtDatePH(s.birthday)+'</strong></div>':'')+(s.contactNumber?'<div style="font-size:12px;color:var(--text-2);">📱 Contact: <strong>'+s.contactNumber+'</strong></div>':'')+(s.terminationDate?'<div style="font-size:12px;color:var(--text-2);">📌 '+(s.status==='resigned'?'Resigned':'Terminated')+': <strong>'+fmtDatePH(s.terminationDate)+'</strong></div>':'')+'</div></div><div class="action-buttons" style="flex-shrink:0;"><button class="btn-warning btn-sm" onclick="openEditModal(\''+s.id+'\')">✏️ Edit</button><button class="btn-info btn-sm" onclick="openRateHistoryModal(\''+s.id+'\')">📈 Rate History</button>'+(faceDescriptorsMap[s.id]?'<button class="btn-sm" style="background:#dcfce7;color:var(--green-dark);" onclick="confirmDeleteFace(\''+s.id+'\')">👤✅</button>':'<button class="btn-info btn-sm" onclick="openFaceEnrollModal(\''+s.id+'\')">📸 Face</button>')+'<button class="btn-danger btn-sm" onclick="delStaff(\''+s.id+'\')">🗑️</button></div></div></div>';
                     };
                     let html = '<div style="font-size:13px;font-weight:700;color:var(--text-2);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;">On-Board Employees ('+onboard.length+')</div>';
                     html += onboard.length===0 ? '<div class="card" style="text-align:center;color:var(--text-3);padding:40px;">No on-board employees yet</div>' : onboard.map(renderStaffCard).join('');
