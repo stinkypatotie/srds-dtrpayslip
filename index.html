@@ -902,6 +902,31 @@
         let currentEditingStaffId = null, pendingClockOut = null;
 
         // ═══════════════════════════════════════════════
+        // SYNC STATUS (added) — makes silent Firebase failures visible
+        // ═══════════════════════════════════════════════
+        let syncStatus = { ok: null, err: '' }, lastLocalSaveAt = 0, lastSyncAlertAt = 0;
+        function setSyncStatus(ok, err) {
+            syncStatus = { ok: ok, err: err || '' };
+            let b = document.getElementById('sync-banner');
+            if (ok !== false) { if (b) b.style.display = 'none'; return; }
+            if (!b) {
+                b = document.createElement('div');
+                b.id = 'sync-banner';
+                b.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:99999;background:#dc2626;color:#fff;font:600 13px/1.4 system-ui,sans-serif;padding:8px 12px;text-align:center;';
+                document.body.appendChild(b);
+            }
+            b.textContent = '⚠️ This device is NOT saving to the cloud — clock-ins here will not appear on other devices. ' + (err ? '(' + err + ') ' : '') + 'Tell the admin to check Devices tab.';
+            b.style.display = 'block';
+        }
+        function notifySyncFailure(err) {
+            // Telegram alert so a failing device is identified immediately (max 1 per minute)
+            if (Date.now() - lastSyncAlertAt < 60000) return;
+            lastSyncAlertAt = Date.now();
+            const dn = localStorage.getItem('deviceName') || 'Unknown';
+            sendTelegramNotification(`⚠️ <b>CLOUD SAVE FAILED</b>\n\nThe last clock record on this device was saved locally only and did NOT reach Firebase.\n<b>Device:</b> ${dn}\n<b>Error:</b> ${err || 'unknown'}\n<b>UID:</b> ${currentFirebaseUid || 'none'}`);
+        }
+
+        // ═══════════════════════════════════════════════
         // FACE RECOGNITION STATE
         // ═══════════════════════════════════════════════
         let faceApiLoaded = false;
@@ -1410,7 +1435,10 @@
             if (isFirebaseInitialized) {
                 // Use update() instead of set() to avoid overwriting other nodes
                 // like allowedUids, devices, etc. that are managed separately
-                db.ref().update(data).catch(e => console.warn('Firebase saveData failed:', e.message));
+                lastLocalSaveAt = Date.now();
+                db.ref().update(data)
+                    .then(() => setSyncStatus(true))
+                    .catch(e => { console.warn('Firebase saveData failed:', e.message); setSyncStatus(false, e.message); notifySyncFailure(e.message); });
             }
         }
 
@@ -1485,7 +1513,7 @@
                         }
                     } else loadFromLocalStorage();
                     render();
-                }).catch(() => { loadFromLocalStorage(); render(); });
+                }).catch(e => { setSyncStatus(false, 'Cannot read cloud data: ' + ((e && e.message) || 'error')); loadFromLocalStorage(); render(); });
             } else { loadFromLocalStorage(); }
         }
 
@@ -1560,6 +1588,7 @@
             app.view = view;
             render();
             window.scrollTo(0, 0);
+            if (view === 'clock' && app.adminMode) refreshRecordsFromFirebase(ok => { if (ok) refreshTodayCards(); });
         }
 
         const BOTTOM_NAV_MAIN = ['clock','view','payroll','deductions','staff'];
@@ -1878,7 +1907,7 @@
                     <div id="clock-msg" class="msg" style="display:none;"></div>
                 </div>
 				${!app.adminMode ? `<div style="text-align:center;margin-top:8px;"><button class="btn-muted btn-sm" onclick="showAdminLogin()">🔐 Admin Login</button></div>` : `<div style="text-align:center;margin-top:8px;"><button class="btn-danger btn-sm" onclick="exitAdminMode()">🚪 Exit Admin Mode</button></div>`}
-                ${renderTodayCards()}
+                <div id="today-cards">${renderTodayCards()}</div>
             `;
         }
 
@@ -1926,8 +1955,45 @@
             }
         }
 
+        // Pull latest records from Firebase (Firebase = source of truth). Keeps in-memory records
+        // only while a local save is recent/failed so unsynced clock-ins are never dropped.
+        function refreshRecordsFromFirebase(done) {
+            if (!isFirebaseInitialized) { done && done(false); return; }
+            db.ref('records').once('value').then(snap => {
+                const data = snap.val();
+                const fb = (Array.isArray(data) ? data : Object.values(data || {})).filter(Boolean);
+                const keep = syncStatus.ok === false || (Date.now() - lastLocalSaveAt) < 15000;
+                const mem = keep ? app.records : [];
+                const merged = fb.map(fr => {
+                    if (fr.out) return fr;
+                    const m = mem.find(l => l.sid == fr.sid && l.date === fr.date);
+                    return (m && m.out) ? { ...fr, out: m.out, out2: m.out2 || fr.out2 } : fr;
+                });
+                const memOnly = mem.filter(m => !fb.some(f => f.sid == m.sid && f.date === m.date));
+                app.records = [...merged, ...memOnly];
+                try { localStorage.setItem('records', JSON.stringify(app.records)); } catch(e) {}
+                done && done(true);
+            }).catch(e => { console.warn('Records refresh failed:', e.message); done && done(false); });
+        }
+        function refreshTodayCards() {
+            const el = document.getElementById('today-cards');
+            if (el && app.view === 'clock' && app.adminMode) el.innerHTML = renderTodayCards();
+        }
+        setInterval(() => {
+            if (app.adminMode && app.view === 'clock' && isFirebaseInitialized) refreshRecordsFromFirebase(ok => { if (ok) refreshTodayCards(); });
+        }, 20000);
+
         // Separated: actual clock-in logic (called after camera)
         function doClockIn(sid, s, photoData, captionObj) {
+            // Re-sync records first so a stale copy on this device can't overwrite other devices' records
+            if (!isFirebaseInitialized) return _doClockInNow(sid, s, photoData, captionObj);
+            refreshRecordsFromFirebase(() => {
+                const td = today(), ex = app.records.find(r=>r.sid==sid&&r.date===td);
+                if (ex && ex.in && !ex.status) { showMsg('clock-msg', s.name + ' is already clocked in today (recorded on another device)', 'err'); render(); return; }
+                _doClockInNow(sid, s, photoData, captionObj);
+            });
+        }
+        function _doClockInNow(sid, s, photoData, captionObj) {
             const td = today(), existing = app.records.find(r=>r.sid==sid&&r.date===td);
             const time = fmtTime(new Date());
 
@@ -3450,11 +3516,13 @@
                     isFirebaseInitialized = true;
                     currentFirebaseUid = userCredential.user.uid;
                     console.log('✅ Firebase ready. UID:', userCredential.user.uid);
+                    try { let _fbConn = null; db.ref('.info/connected').on('value', snap => { _fbConn = snap.val(); if (_fbConn === false) setTimeout(() => { if (_fbConn === false) setSyncStatus(false, 'No connection to Firebase'); }, 6000); else if (syncStatus.err === 'No connection to Firebase') setSyncStatus(true); }); } catch(e) {}
                     startApp();
                 })
                 .catch(e => {
                     // Any step failed (network down, auth error, etc.)
                     console.warn('Firebase unavailable, running offline:', e.message);
+                    setSyncStatus(false, 'Firebase sign-in/load failed: ' + e.message);
                     startApp(); // app still works with localStorage
                 });
         });
