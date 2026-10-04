@@ -904,6 +904,7 @@
         // ═══════════════════════════════════════════════
         // SYNC STATUS (added) — makes silent Firebase failures visible
         // ═══════════════════════════════════════════════
+        function cleanForFirebase(v) { return JSON.parse(JSON.stringify(v === undefined ? null : v)); }
         let syncStatus = { ok: null, err: '' }, lastLocalSaveAt = 0, lastSyncAlertAt = 0;
         function setSyncStatus(ok, err) {
             syncStatus = { ok: ok, err: err || '' };
@@ -1278,7 +1279,7 @@
                                 const merged2 = fbRecords.map(fr => {
                                     if (!fr || fr.out) return fr;
                                     const lr = localRecs2.find(l => l.sid == fr.sid && l.date === fr.date);
-                                    return (lr && lr.out) ? { ...fr, out: lr.out, out2: lr.out2 || fr.out2 } : fr;
+                                    return (lr && lr.out) ? { ...fr, out: lr.out, out2: lr.out2 || fr.out2 || null } : fr;
                                 });
                                 app.records = [...merged2, ...localOnly];
                             }
@@ -1428,6 +1429,9 @@
         // DATA PERSISTENCE
         // ═══════════════════════════════════════════════
         function saveData() {
+            // Firebase rejects undefined anywhere in the payload (rejects the WHOLE write) — strip it
+            app.staff = cleanForFirebase(app.staff); app.records = cleanForFirebase(app.records);
+            app.deductions = cleanForFirebase(app.deductions); app.settings = cleanForFirebase(app.settings);
             const data = { staff: app.staff, records: app.records, deductions: app.deductions, settings: app.settings };
             // Always write to localStorage immediately (synchronously) so data is
             // never lost if the page closes before the async Firebase write completes.
@@ -1464,13 +1468,13 @@
                         const _merged = _fbRecs.map(fr => {
                             if (!fr || fr.out) return fr;
                             const lr = _localRecs.find(l => l.sid == fr.sid && l.date === fr.date);
-                            return (lr && lr.out) ? { ...fr, out: lr.out, out2: lr.out2 || fr.out2 } : fr;
+                            return (lr && lr.out) ? { ...fr, out: lr.out, out2: lr.out2 || fr.out2 || null } : fr;
                         });
                         app.records = [..._merged, ..._localOnly];
                         // Heal Firebase with any recovered data so other devices see it too
                         const _needsHeal = _localOnly.length > 0 ||
                             _merged.some((mr, i) => mr && _fbRecs[i] && mr.out !== _fbRecs[i].out);
-                        if (_needsHeal) db.ref('records').set(app.records).catch(() => {});
+                        if (_needsHeal) db.ref('records').set(cleanForFirebase(app.records)).catch(() => {});
                         // Normalize Firebase deductions (may come back as object with numeric keys)
                         // AND merge local status changes (e.g. 'applied') that haven't synced yet.
                         // IMPORTANT: only trust the local copy if it is actually NEWER than Firebase
@@ -1496,7 +1500,7 @@
                         // Heal Firebase if anything was recovered
                         const _dedNeedsHeal = _localDedOnly.length > 0 ||
                             _mergedDeds.some((md, i) => md && _fbDeds[i] && md.status !== _fbDeds[i].status);
-                        if (_dedNeedsHeal) db.ref('deductions').set(app.deductions).catch(() => {});
+                        if (_dedNeedsHeal) db.ref('deductions').set(cleanForFirebase(app.deductions)).catch(() => {});
                         if (data.settings) {
                             const _tg2 = app.settings.telegram;
                             const _stg2 = data.settings.telegram || {};
@@ -1513,7 +1517,7 @@
                         }
                     } else loadFromLocalStorage();
                     render();
-                }).catch(e => { setSyncStatus(false, 'Cannot read cloud data: ' + ((e && e.message) || 'error')); loadFromLocalStorage(); render(); });
+                }).catch(e => { setSyncStatus(false, 'Cloud sync error: ' + ((e && e.message) || 'error')); loadFromLocalStorage(); render(); });
             } else { loadFromLocalStorage(); }
         }
 
@@ -1967,7 +1971,7 @@
                 const merged = fb.map(fr => {
                     if (fr.out) return fr;
                     const m = mem.find(l => l.sid == fr.sid && l.date === fr.date);
-                    return (m && m.out) ? { ...fr, out: m.out, out2: m.out2 || fr.out2 } : fr;
+                    return (m && m.out) ? { ...fr, out: m.out, out2: m.out2 || fr.out2 || null } : fr;
                 });
                 const memOnly = mem.filter(m => !fb.some(f => f.sid == m.sid && f.date === m.date));
                 app.records = [...merged, ...memOnly];
@@ -2104,7 +2108,7 @@
                         const merged = fbRecords.map(fr => {
                             if (!fr || fr.out) return fr;
                             const lr = localRecs.find(l => l.sid == fr.sid && l.date === fr.date);
-                            return (lr && lr.out) ? { ...fr, out: lr.out, out2: lr.out2 || fr.out2 } : fr;
+                            return (lr && lr.out) ? { ...fr, out: lr.out, out2: lr.out2 || fr.out2 || null } : fr;
                         });
                         app.records = [...merged, ...localOnly];
                     }
