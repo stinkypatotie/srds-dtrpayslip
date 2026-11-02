@@ -621,7 +621,7 @@
         @keyframes bdayWiggle { 0%,100%{transform:rotate(-6deg)} 50%{transform:rotate(6deg)} }
         .birthday-title { font-size:15px; font-weight:800; letter-spacing:2px; text-transform:uppercase; color:rgba(255,255,255,.9); margin-bottom:4px; text-shadow:0 1px 4px rgba(0,0,0,.2); }
         .birthday-name { font-size:28px; font-weight:900; color:#fff; text-shadow:0 2px 8px rgba(0,0,0,.25); margin-bottom:10px; line-height:1.25; word-break:break-word; }
-        .birthday-msg { font-size:14.5px; font-weight:600; color:rgba(255,255,255,.95); background:rgba(255,255,255,.16); border-radius:14px; padding:12px 14px; margin-bottom:22px; line-height:1.5; }
+        .birthday-msg { white-space:pre-line; font-size:14.5px; font-weight:600; color:rgba(255,255,255,.95); background:rgba(255,255,255,.16); border-radius:14px; padding:12px 14px; margin-bottom:22px; line-height:1.5; }
         .birthday-close-btn { background:#fff; color:#7c3aed; font-weight:800; padding:13px 30px; border-radius:30px; border:none; font-size:15px; box-shadow:0 6px 18px rgba(0,0,0,.2); cursor:pointer; }
         .birthday-close-btn:active { transform:scale(.95); }
         .confetti-piece {
@@ -816,10 +816,10 @@
     <div id="birthday-overlay" class="birthday-overlay" onclick="if(event.target===this)closeBirthdayModal()">
         <div class="birthday-card" id="birthday-card">
             <div class="birthday-emoji-row">🎉🎂🥳</div>
-            <div class="birthday-title">It's a special day!</div>
+            <div class="birthday-title" id="birthday-title-text">It's a special day!</div>
             <div class="birthday-name" id="birthday-name-text"></div>
             <div class="birthday-msg" id="birthday-msg-text"></div>
-            <button class="birthday-close-btn" onclick="closeBirthdayModal()">🎁 Yay, let's celebrate!</button>
+            <button class="birthday-close-btn" id="birthday-btn-text" onclick="closeBirthdayModal()">🎁 Yay, let's celebrate!</button>
         </div>
     </div>
 
@@ -2026,7 +2026,7 @@
             document.getElementById('pin-inp').value='';
             sendTelegramClockin(s, time, lateMsg, photoData);
             render();
-            if (isBirthdayToday(s.birthday)) showBirthdayPopup(s.name);
+            showBirthdayForLogin(s);
         }
 
         // ═══════════════════════════════════════════════
@@ -2065,7 +2065,46 @@
             }
         }
 
+        const BIRTHDAY_GREET_MESSAGES = [
+            "Don't be a grinch — go give them a big happy birthday greeting! A smile costs nothing. 😄",
+            "Quick task before your first customer: greet them a Happy Birthday! Bonus points for a high-five. 🙌",
+            "Today's most important duty: make them feel special. Say Happy Birthday — loud and proud! 📣",
+            "Heads up! Forgetting to greet a birthday celebrant may result in awkward lunch breaks. 😅🍰",
+            "Free reminder: a birthday greeting a day keeps the bad vibes away. Go say hi! 🎈",
+            "Spread the joy! Tell them Happy Birthday before the day gets busy. 🥳"
+        ];
+
+        // Everyone who logs in sees this: celebrants get the celebration, co-workers get a reminder to greet them
+        function showBirthdayForLogin(loggedInStaff) {
+            const celebrants = (app.staff || []).filter(x => isBirthdayToday(x.birthday));
+            if (!celebrants.length) return;
+            const others = celebrants.filter(x => x.id != loggedInStaff.id);
+            const isCelebrant = others.length !== celebrants.length;
+            const joinNames = arr => arr.length <= 1 ? (arr[0] || '') : arr.slice(0, -1).join(', ') + ' & ' + arr[arr.length - 1];
+            if (isCelebrant) {
+                showBirthdayPopup(loggedInStaff.name);
+                if (others.length) {
+                    document.getElementById('birthday-msg-text').textContent += `\n\n🎂 Also celebrating today: ${joinNames(others.map(x => x.name))}!`;
+                }
+            } else {
+                showBirthdayReminderPopup(others.map(x => x.name));
+            }
+        }
+
+        function showBirthdayReminderPopup(names) {
+            document.getElementById('birthday-title-text').textContent = '🎂 Birthday Alert!';
+            document.getElementById('birthday-name-text').textContent = `Today is ${joinNamesSafe(names)}'s birthday!`;
+            document.getElementById('birthday-msg-text').textContent = BIRTHDAY_GREET_MESSAGES[Math.floor(Math.random()*BIRTHDAY_GREET_MESSAGES.length)];
+            document.getElementById('birthday-btn-text').textContent = "👍 Will do!";
+            const overlay = document.getElementById('birthday-overlay');
+            spawnConfetti(document.getElementById('birthday-card'));
+            overlay.style.display = 'flex';
+        }
+        function joinNamesSafe(arr) { return arr.length <= 1 ? (arr[0] || '') : arr.slice(0, -1).join(', ') + ' & ' + arr[arr.length - 1]; }
+
         function showBirthdayPopup(name) {
+            document.getElementById('birthday-title-text').textContent = "It's a special day!";
+            document.getElementById('birthday-btn-text').textContent = "🎁 Yay, let's celebrate!";
             document.getElementById('birthday-name-text').textContent = `Happy Birthday, ${name}! 🎂`;
             const msg = BIRTHDAY_MESSAGES[Math.floor(Math.random()*BIRTHDAY_MESSAGES.length)];
             document.getElementById('birthday-msg-text').textContent = msg;
