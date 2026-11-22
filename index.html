@@ -2030,6 +2030,50 @@
         }
 
         // ═══════════════════════════════════════════════
+        // BIRTHDAY AUTO-LOGIN 🎂
+        // On their birthday, an on-board employee is automatically logged in at 7:30 AM
+        // and logged out at 7:00 PM (no late deduction, counts as a full day).
+        // Runs on whichever device has the app open; Firebase is checked first so devices don't duplicate it.
+        // ═══════════════════════════════════════════════
+        const BDAY_AUTO_IN = '07:30', BDAY_AUTO_OUT = '19:00';
+        let birthdayAutoBusy = false;
+        function birthdayAutoLogin() {
+            if (birthdayAutoBusy || !app.staff || !app.staff.length) return;
+            const now = new Date(), mins = now.getHours()*60 + now.getMinutes(), td = today();
+            const celebrants = app.staff.filter(x => (!x.status || x.status === 'onboard') && isBirthdayToday(x.birthday));
+            const hasOpenAuto = app.records.some(r => r.auto === 'birthday' && r.in && !r.out && !r.status);
+            if (!celebrants.length && !hasOpenAuto) return;
+            const work = () => {
+                const created = []; let changed = false;
+                // Auto logout: 7:00 PM today, or catch up on an earlier day that was never closed
+                app.records.forEach(r => {
+                    if (r.auto === 'birthday' && r.in && !r.out && !r.status && (r.date < td || (r.date === td && mins >= 19*60))) {
+                        r.out = BDAY_AUTO_OUT; changed = true;
+                    }
+                });
+                // Auto login: from 7:30 AM, only if the employee has no record yet today (clocked in, leave, on-call, etc.)
+                if (mins >= 7*60 + 30) {
+                    celebrants.forEach(st => {
+                        if (app.records.find(r => r.sid == st.id && r.date === td)) return;
+                        app.records.push({ id: Date.now() + created.length, sid: st.id, date: td, in: BDAY_AUTO_IN, out: mins >= 19*60 ? BDAY_AUTO_OUT : null, in2: null, out2: null, status: null, oncallHours: null, notes: '🎂 Birthday auto-login', auto: 'birthday' });
+                        created.push(st); changed = true;
+                    });
+                }
+                if (changed) {
+                    saveData();
+                    refreshTodayCards();
+                    created.forEach(st => sendTelegramNotification(`🎂 <b>BIRTHDAY AUTO-LOGIN</b>\n\n<b>Name:</b> ${st.name}\n<b>Date:</b> ${td}\n<b>Schedule:</b> ${BDAY_AUTO_IN} – ${BDAY_AUTO_OUT}\nHappy Birthday! 🎉`));
+                }
+                birthdayAutoBusy = false;
+            };
+            birthdayAutoBusy = true;
+            if (isFirebaseInitialized) {
+                // Pull the latest records first; if that fails, skip this round (another device or the next minute will do it)
+                refreshRecordsFromFirebase(ok => { if (ok) work(); else birthdayAutoBusy = false; });
+            } else work();
+        }
+
+        // ═══════════════════════════════════════════════
         // BIRTHDAY POP-UP 🎉
         // ═══════════════════════════════════════════════
         function isBirthdayToday(birthday) {
@@ -2076,7 +2120,7 @@
 
         // Everyone who logs in sees this: celebrants get the celebration, co-workers get a reminder to greet them
         function showBirthdayForLogin(loggedInStaff) {
-            const celebrants = (app.staff || []).filter(x => isBirthdayToday(x.birthday));
+            const celebrants = (app.staff || []).filter(x => (!x.status || x.status === 'onboard') && isBirthdayToday(x.birthday));
             if (!celebrants.length) return;
             const others = celebrants.filter(x => x.id != loggedInStaff.id);
             const isCelebrant = others.length !== celebrants.length;
@@ -2632,6 +2676,15 @@
             showMsg('rate-history-msg', '✅ Saved!', 'ok');
             setTimeout(() => { closeRateHistoryModal(); render(); }, 700);
         }
+        // Minutes late for one late-deduction entry (read from its reason text, e.g. "Late Login: 15 minute(s) late (at 07:50:00)")
+        function getLateMinutes(l) {
+            const r = String(l.reason || '');
+            let m = r.match(/(\d+)\s*min/i);
+            if (m) return parseInt(m[1], 10);
+            m = r.match(/at\s+(\d{1,2}):(\d{2})/i);            // fallback: derive from the login time vs 7:35 AM cutoff
+            if (m) return Math.max(0, (parseInt(m[1],10)*60 + parseInt(m[2],10)) - (7*60 + 35));
+            return 0;
+        }
         function get13thMonthYearStats(staffId, year) {
             const staff = app.staff.find(s => s.id === staffId);
             const monthly = [];
@@ -2653,7 +2706,7 @@
             const yStart = new Date(year, 0, 1), yEnd = new Date(year, 11, 31, 23, 59, 59);
             const lateDeds = app.deductions.filter(d => { if (d.staffId !== staffId || d.type !== 'late') return false; const dd = new Date(d.deductionDate); return dd >= yStart && dd <= yEnd; });
             const totalLates = lateDeds.reduce((sum, d) => sum + d.amount, 0);
-            return { monthly, workedMonths, workingDays, absentDays, monthsWorked: workedMonths.length, base, absenceDeduction, totalLates, lateCount: lateDeds.length };
+            return { monthly, workedMonths, workingDays, absentDays, monthsWorked: workedMonths.length, base, absenceDeduction, totalLates, lateCount: lateDeds.length, lateDeds: [...lateDeds].sort((a,b)=> new Date(a.deductionDate) - new Date(b.deductionDate)).map(l => ({ ...l, minutes: getLateMinutes(l) })), totalLateMinutes: lateDeds.reduce((sum, l) => sum + getLateMinutes(l), 0) };
         }
         function compute13thMonth(staffId, year) {
             const staff = app.staff.find(s => s.id === staffId);
@@ -2664,8 +2717,48 @@
             const lateDeduction = roundUp(st.totalLates);
             const earnedSalary = base - absenceDeduction - lateDeduction;
             const bonus = roundUp(earnedSalary / 12);
-            return { staff, base, absenceDeduction, lateDeduction, earnedSalary, bonus, ...st };
+            return { ...st, staff, base, absenceDeduction, lateDeduction, earnedSalary, bonus };
         }
+        // Itemized breakdown: every month and every late deduction that goes into the computation
+        function build13thItemRows(d) {
+            const peso = n => '₱' + Number(n).toLocaleString();
+            const monthRows = d.workedMonths.map(x => ({
+                month: MONTH_NAMES[x.month], rate: peso(x.dailyRate), salary: peso(roundUp(x.monthlySalary)),
+                wd: x.workingDays, ab: x.absentDays,
+                ded: x.absentDays ? '₱' + x.absenceDeduction.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}) : '—',
+                formula: x.absentDays ? `${peso(roundUp(x.monthlySalary))} ÷ ${x.workingDays} × ${x.absentDays}` : ''
+            }));
+            const lateRows = d.lateDeds.map(l => ({ date: l.deductionDate, minutes: l.minutes, amount: peso(l.amount) }));
+            return { monthRows, lateRows, peso };
+        }
+        function render13thItemized(d) {
+            const { monthRows, lateRows, peso } = build13thItemRows(d);
+            const th = 'text-align:left;padding:6px 8px;font-size:11px;color:var(--text-2);text-transform:uppercase;border-bottom:1px solid var(--border,#e2e8f0);white-space:nowrap;';
+            const td = 'padding:6px 8px;font-size:13px;border-bottom:1px solid var(--border,#f1f5f9);white-space:nowrap;';
+            const mTable = monthRows.length ? `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">
+                <tr><th style="${th}">Month</th><th style="${th}">Rate/Day</th><th style="${th}">Monthly Basic (×22)</th><th style="${th}">Working Days</th><th style="${th}">Absent</th><th style="${th}">Absence Deduction</th></tr>
+                ${monthRows.map(r => `<tr><td style="${td}">${r.month}</td><td style="${td}">${r.rate}</td><td style="${td}">${r.salary}</td><td style="${td}">${r.wd}</td><td style="${td}">${r.ab}</td><td style="${td}${r.ab ? 'color:#ef4444;' : ''}">${r.ded}${r.formula ? `<div style="font-size:10px;color:var(--text-2);">${r.formula}</div>` : ''}</td></tr>`).join('')}
+                <tr style="font-weight:700;"><td style="${td}">TOTAL</td><td style="${td}"></td><td style="${td}">${peso(d.base)}</td><td style="${td}">${d.workingDays}</td><td style="${td}">${d.absentDays}</td><td style="${td}color:#ef4444;">-${peso(d.absenceDeduction)}<div style="font-size:10px;color:var(--text-2);">rounded up</div></td></tr>
+            </table></div>` : `<div style="font-size:13px;color:var(--text-2);">No DTR records for this year yet.</div>`;
+            const lTable = lateRows.length ? `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">
+                <tr><th style="${th}">Date</th><th style="${th}">Minutes Late</th><th style="${th}">Amount</th></tr>
+                ${lateRows.map(r => `<tr><td style="${td}">${r.date}</td><td style="${td}">${r.minutes} min</td><td style="${td}color:#ef4444;">-${r.amount}</td></tr>`).join('')}
+                <tr style="font-weight:700;"><td style="${td}">TOTAL</td><td style="${td}">${d.totalLateMinutes} min</td><td style="${td}color:#ef4444;">-${peso(d.lateDeduction)}</td></tr>
+            </table></div>` : `<div style="font-size:13px;color:var(--text-2);">No late deductions this year.</div>`;
+            return `<div style="margin-top:16px;border-top:1px dashed var(--border,#e2e8f0);padding-top:14px;">
+                <div style="font-size:12px;font-weight:700;color:var(--text-2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Itemized: Monthly Basic Salary &amp; Absences</div>${mTable}
+                <div style="font-size:12px;font-weight:700;color:var(--text-2);text-transform:uppercase;letter-spacing:.5px;margin:16px 0 8px;">Itemized: Late Deductions</div>${lTable}
+                <div style="font-size:11px;color:var(--text-2);margin-top:6px;">Each late = (daily rate ÷ 12 ÷ 60) × minutes late, rounded up to the next peso. Late counts from 7:35 AM.</div>
+                <div style="margin-top:14px;padding:10px 12px;background:var(--surface-3,#f1f5f9);border-radius:8px;font-size:13px;line-height:1.7;">
+                    <div>Basic Salary: <strong>${peso(d.base)}</strong></div>
+                    <div>− Absence Deduction: <strong style="color:#ef4444;">${peso(d.absenceDeduction)}</strong></div>
+                    <div>− Late Deduction: <strong style="color:#ef4444;">${peso(d.lateDeduction)}</strong></div>
+                    <div>= Basic Salary Actually Earned: <strong>${peso(d.earnedSalary)}</strong></div>
+                    <div>÷ 12 = <strong>13th Month Pay: ${peso(d.bonus)}</strong></div>
+                </div>
+            </div>`;
+        }
+
         function renderThirteenth() {
             if (!app.adminMode) return adminRequired();
             return `
@@ -2703,13 +2796,14 @@
                             <div class="payroll-grid">
                                 <div class="payroll-line">&nbsp;&nbsp;Working Days / Absent Days (${year}): <span>${d.workingDays} / ${d.absentDays}</span></div>
                                 <div class="payroll-line">2. Absence Deduction: <span class="payroll-deduct">-₱${d.absenceDeduction.toLocaleString()}</span></div>
-                                <div class="payroll-line">&nbsp;&nbsp;Total Lates (${year}), ${d.lateCount} instance(s): <span>₱${d.totalLates.toLocaleString()}</span></div>
+                                <div class="payroll-line">&nbsp;&nbsp;Total Late Minutes (${year}): <span>${d.totalLateMinutes.toLocaleString()} min</span></div>
                                 <div class="payroll-line">3. Late Deduction: <span class="payroll-deduct">-₱${d.lateDeduction.toLocaleString()}</span></div>
                                 <div class="payroll-line">4. Basic Salary Actually Earned: <span>₱${d.earnedSalary.toLocaleString()}</span></div>
                                 <div class="payroll-line">5. 13th Month Pay (÷ 12): <span><strong>₱${d.bonus.toLocaleString()}</strong></span></div>
                             </div>
                         </div>
                     </div>
+                    ${render13thItemized(d)}
                     <button class="btn-info btn-sm" onclick="print13thMonth('${s.id}')" style="margin-top:14px;">🖨️ Print 13th Month Invoice</button>
                 </div>`;
             }).join('');
@@ -2718,7 +2812,8 @@
             const year = app.thirteenthYear || new Date().getFullYear();
             const d = compute13thMonth(staffId, year);
             if (!d) return;
-            const monthRows = d.workedMonths.map(x => `<tr><td style="padding-left:24px;">${MONTH_NAMES[x.month]}</td><td>₱${x.dailyRate.toLocaleString()}/day</td><td>₱${x.dailyRate.toLocaleString()} × 22 = ₱${roundUp(x.monthlySalary).toLocaleString()}</td></tr>`).join('');
+            const monthRows = d.workedMonths.map(x => `<tr><td style="padding-left:24px;">${MONTH_NAMES[x.month]}</td><td>₱${x.dailyRate.toLocaleString()}/day</td><td>₱${x.dailyRate.toLocaleString()} × 22 = ₱${roundUp(x.monthlySalary).toLocaleString()}${x.absentDays ? `<div style="font-size:12px;color:#ef4444;">${x.workingDays} working days, ${x.absentDays} absent: ₱${roundUp(x.monthlySalary).toLocaleString()} ÷ ${x.workingDays} × ${x.absentDays} = -₱${x.absenceDeduction.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</div>` : ''}</td></tr>`).join('');
+            const lateItemRows = d.lateDeds.map(l => `<tr><td style="padding-left:24px;">${l.deductionDate}</td><td colspan="2" style="color:#ef4444;">${l.minutes} min late — -₱${Number(l.amount).toLocaleString()}</td></tr>`).join('');
             const pw = window.open('','','width=800,height=700');
             pw.document.write(`<!DOCTYPE html><html><head><title>13th Month Bonus - ${d.staff.name}</title><style>*{margin:0;padding:0;box-sizing:border-box;}body{font-family:-apple-system,Arial,sans-serif;padding:40px;background:white;}.payslip{max-width:680px;margin:0 auto;border:2px solid #1a2332;border-radius:12px;overflow:hidden;}.header{background:#1a2332;color:white;padding:28px;text-align:center;}.header h1{font-size:24px;margin-bottom:6px;}.header p{opacity:.7;font-size:14px;}table{width:100%;border-collapse:collapse;}th{background:#f1f5f9;padding:12px;text-align:left;font-size:12px;color:#475569;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid #e2e8f0;}td{padding:12px;border-bottom:1px solid #f1f5f9;font-size:14px;}.total{background:#1a2332;color:white;font-weight:bold;font-size:16px;}.sigs{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin:32px 28px;}.sig-box{text-align:center;}.sig-line{border-top:2px solid #e2e8f0;margin-top:48px;padding-top:10px;font-size:13px;color:#475569;}@media print{.no-print{display:none;}}</style></head>
             <body><div class="payslip"><div class="header"><h1>SIR RAMOS DRUGSTORE</h1><p>13TH-MONTH PAY COMPUTATION — ${year}</p></div>
@@ -2731,7 +2826,8 @@
                 <tr><th>&nbsp;&nbsp;Total Working Days (${year})</th><td colspan="2">${d.workingDays}</td></tr>
                 <tr><th>&nbsp;&nbsp;Absent Days (${year})</th><td colspan="2">${d.absentDays}</td></tr>
                 <tr><th style="color:#ef4444;">2. Absence Deduction</th><td colspan="2" style="color:#ef4444;">Σ (month's salary ÷ month's working days × month's absences) = -₱${d.absenceDeduction.toLocaleString()}</td></tr>
-                <tr><th>&nbsp;&nbsp;Total Lates (${year})</th><td colspan="2">${d.lateCount} instance(s) = ₱${d.totalLates.toLocaleString()}</td></tr>
+                <tr><th>&nbsp;&nbsp;Total Late Minutes (${year})</th><td colspan="2">${d.totalLateMinutes.toLocaleString()} min = ₱${d.totalLates.toLocaleString()}</td></tr>
+                ${lateItemRows}
                 <tr><th style="color:#ef4444;">3. Late Deduction</th><td colspan="2" style="color:#ef4444;">-₱${d.lateDeduction.toLocaleString()}</td></tr>
                 <tr><th>4. Basic Salary Actually Earned</th><td colspan="2">₱${d.base.toLocaleString()} − ₱${d.absenceDeduction.toLocaleString()} − ₱${d.lateDeduction.toLocaleString()} = ₱${d.earnedSalary.toLocaleString()}</td></tr>
                 <tr class="total"><th>5. 13TH MONTH PAY</th><td colspan="2">₱${d.earnedSalary.toLocaleString()} ÷ 12 = ₱${d.bonus.toLocaleString()}</td></tr>
@@ -3524,6 +3620,8 @@
             updateAdminStatus();
             updateDeviceActivity();
             setTimeout(() => loadFaceModels(), 4000);
+            setTimeout(birthdayAutoLogin, 6000);          // after data has loaded
+            setInterval(birthdayAutoLogin, 60000);        // keeps checking (7:30 login, 7:00pm logout)
         }
 
         window.addEventListener('load', () => {
