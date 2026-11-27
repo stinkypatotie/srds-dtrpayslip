@@ -2680,7 +2680,9 @@
         // ═══════════════════════════════════════════════
         // 13TH MONTH PAY
         // Formula:
-        //   Per month worked: Monthly Basic Salary = that month's Daily Rate × 22
+        //   Per month worked: Monthly Basic Salary = that month's Daily Rate × that month's actual Working Days
+        //     (Working Days = days in the calendar month minus rest days; 5 working days / 2 rest days (Sat & Sun) per week.
+        //      e.g. Nov 2026 = 21 days, Dec 2026 = 23 days. Holidays are not subtracted.)
         //     (Daily Rate is looked up from the employee's rate/position history —
         //      e.g. ₱500/day for months 1-3, then ₱650/day from month 4 onward after a promotion)
         //   1. Total Basic Salary for Months Worked = Σ Monthly Basic Salary per worked month
@@ -2747,6 +2749,14 @@
             if (m) return Math.max(0, (parseInt(m[1],10)*60 + parseInt(m[2],10)) - (7*60 + 35));
             return 0;
         }
+        // Actual working days of a calendar month: 5 working days / 2 rest days per week (rest days = Sat & Sun)
+        const REST_WEEKDAYS = [0, 6]; // 0 = Sunday, 6 = Saturday
+        function getMonthWorkingDays(year, month) {
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            let count = 0;
+            for (let d = 1; d <= daysInMonth; d++) { if (!REST_WEEKDAYS.includes(new Date(year, month, d).getDay())) count++; }
+            return count;
+        }
         function get13thMonthYearStats(staffId, year) {
             const staff = app.staff.find(s => s.id === staffId);
             const monthly = [];
@@ -2756,9 +2766,10 @@
                 let workingDays = 0, absentDays = 0;
                 recs.forEach(r => { if (r.status !== 'rest') { workingDays++; if (r.status === 'absent') absentDays++; } });
                 const dailyRate = getRateForDate(staff, mEnd);
-                const monthlySalary = dailyRate * 22;
+                const calendarDays = getMonthWorkingDays(year, m);
+                const monthlySalary = dailyRate * calendarDays;
                 const absenceDeduction = workingDays > 0 ? (monthlySalary / workingDays) * absentDays : 0;
-                monthly.push({ month: m, dailyRate, monthlySalary, workingDays, absentDays, absenceDeduction, worked: workingDays > 0 });
+                monthly.push({ month: m, dailyRate, calendarDays, monthlySalary, workingDays, absentDays, absenceDeduction, worked: workingDays > 0 });
             }
             const workedMonths = monthly.filter(x => x.worked);
             const workingDays = workedMonths.reduce((s,x)=>s+x.workingDays, 0);
@@ -2785,7 +2796,7 @@
         function build13thItemRows(d) {
             const peso = n => '₱' + Number(n).toLocaleString();
             const monthRows = d.workedMonths.map(x => ({
-                month: MONTH_NAMES[x.month], rate: peso(x.dailyRate), salary: peso(roundUp(x.monthlySalary)),
+                month: MONTH_NAMES[x.month], rate: peso(x.dailyRate), salary: peso(roundUp(x.monthlySalary)), calDays: x.calendarDays,
                 wd: x.workingDays, ab: x.absentDays,
                 ded: x.absentDays ? '₱' + x.absenceDeduction.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}) : '—',
                 formula: x.absentDays ? `${peso(roundUp(x.monthlySalary))} ÷ ${x.workingDays} × ${x.absentDays}` : ''
@@ -2798,8 +2809,8 @@
             const th = 'text-align:left;padding:6px 8px;font-size:11px;color:var(--text-2);text-transform:uppercase;border-bottom:1px solid var(--border,#e2e8f0);white-space:nowrap;';
             const td = 'padding:6px 8px;font-size:13px;border-bottom:1px solid var(--border,#f1f5f9);white-space:nowrap;';
             const mTable = monthRows.length ? `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">
-                <tr><th style="${th}">Month</th><th style="${th}">Rate/Day</th><th style="${th}">Monthly Basic (×22)</th><th style="${th}">Working Days</th><th style="${th}">Absent</th><th style="${th}">Absence Deduction</th></tr>
-                ${monthRows.map(r => `<tr><td style="${td}">${r.month}</td><td style="${td}">${r.rate}</td><td style="${td}">${r.salary}</td><td style="${td}">${r.wd}</td><td style="${td}">${r.ab}</td><td style="${td}${r.ab ? 'color:#ef4444;' : ''}">${r.ded}${r.formula ? `<div style="font-size:10px;color:var(--text-2);">${r.formula}</div>` : ''}</td></tr>`).join('')}
+                <tr><th style="${th}">Month</th><th style="${th}">Rate/Day</th><th style="${th}">Monthly Basic (Rate × Working Days)</th><th style="${th}">Working Days</th><th style="${th}">Absent</th><th style="${th}">Absence Deduction</th></tr>
+                ${monthRows.map(r => `<tr><td style="${td}">${r.month}</td><td style="${td}">${r.rate}</td><td style="${td}">${r.salary}<div style="font-size:10px;color:var(--text-2);">${r.rate} × ${r.calDays} days</div></td><td style="${td}">${r.wd}</td><td style="${td}">${r.ab}</td><td style="${td}${r.ab ? 'color:#ef4444;' : ''}">${r.ded}${r.formula ? `<div style="font-size:10px;color:var(--text-2);">${r.formula}</div>` : ''}</td></tr>`).join('')}
                 <tr style="font-weight:700;"><td style="${td}">TOTAL</td><td style="${td}"></td><td style="${td}">${peso(d.base)}</td><td style="${td}">${d.workingDays}</td><td style="${td}">${d.absentDays}</td><td style="${td}color:#ef4444;">-${peso(d.absenceDeduction)}<div style="font-size:10px;color:var(--text-2);">rounded up</div></td></tr>
             </table></div>` : `<div style="font-size:13px;color:var(--text-2);">No DTR records for this year yet.</div>`;
             const lTable = lateRows.length ? `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">
@@ -2838,7 +2849,7 @@
             const year = app.thirteenthYear || new Date().getFullYear();
             return app.staff.filter(s => !s.status || s.status === 'onboard').map(s => {
                 const d = compute13thMonth(s.id, year);
-                const monthRows = d.workedMonths.map(x => `<div class="payroll-line">&nbsp;&nbsp;${MONTH_NAMES[x.month]} — ₱${x.dailyRate.toLocaleString()}/day × 22: <span>₱${roundUp(x.monthlySalary).toLocaleString()}</span></div>`).join('');
+                const monthRows = d.workedMonths.map(x => `<div class="payroll-line">&nbsp;&nbsp;${MONTH_NAMES[x.month]} — ₱${x.dailyRate.toLocaleString()}/day × ${x.calendarDays} days: <span>₱${roundUp(x.monthlySalary).toLocaleString()}</span></div>`).join('');
                 return `<div class="card">
                     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;">
                         <div><div class="payroll-name">${d.staff.name}</div><span class="badge badge-blue">${d.staff.position}</span> <span class="badge" style="background:var(--surface-3);color:var(--text-2);">Year ${year}</span></div>
@@ -2874,7 +2885,7 @@
             const year = app.thirteenthYear || new Date().getFullYear();
             const d = compute13thMonth(staffId, year);
             if (!d) return;
-            const monthRows = d.workedMonths.map(x => `<tr><td style="padding-left:24px;">${MONTH_NAMES[x.month]}</td><td>₱${x.dailyRate.toLocaleString()}/day</td><td>₱${x.dailyRate.toLocaleString()} × 22 = ₱${roundUp(x.monthlySalary).toLocaleString()}${x.absentDays ? `<div style="font-size:12px;color:#ef4444;">${x.workingDays} working days, ${x.absentDays} absent: ₱${roundUp(x.monthlySalary).toLocaleString()} ÷ ${x.workingDays} × ${x.absentDays} = -₱${x.absenceDeduction.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</div>` : ''}</td></tr>`).join('');
+            const monthRows = d.workedMonths.map(x => `<tr><td style="padding-left:24px;">${MONTH_NAMES[x.month]}</td><td>₱${x.dailyRate.toLocaleString()}/day</td><td>₱${x.dailyRate.toLocaleString()} × ${x.calendarDays} days = ₱${roundUp(x.monthlySalary).toLocaleString()}${x.absentDays ? `<div style="font-size:12px;color:#ef4444;">${x.workingDays} working days, ${x.absentDays} absent: ₱${roundUp(x.monthlySalary).toLocaleString()} ÷ ${x.workingDays} × ${x.absentDays} = -₱${x.absenceDeduction.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</div>` : ''}</td></tr>`).join('');
             const lateItemRows = d.lateDeds.map(l => `<tr><td style="padding-left:24px;">${l.deductionDate}</td><td colspan="2" style="color:#ef4444;">${l.minutes} min late — -₱${Number(l.amount).toLocaleString()}</td></tr>`).join('');
             const pw = window.open('','','width=800,height=700');
             pw.document.write(`<!DOCTYPE html><html><head><title>13th Month Bonus - ${d.staff.name}</title><style>*{margin:0;padding:0;box-sizing:border-box;}body{font-family:-apple-system,Arial,sans-serif;padding:40px;background:white;}.payslip{max-width:680px;margin:0 auto;border:2px solid #1a2332;border-radius:12px;overflow:hidden;}.header{background:#1a2332;color:white;padding:28px;text-align:center;}.header h1{font-size:24px;margin-bottom:6px;}.header p{opacity:.7;font-size:14px;}table{width:100%;border-collapse:collapse;}th{background:#f1f5f9;padding:12px;text-align:left;font-size:12px;color:#475569;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid #e2e8f0;}td{padding:12px;border-bottom:1px solid #f1f5f9;font-size:14px;}.total{background:#1a2332;color:white;font-weight:bold;font-size:16px;}.sigs{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin:32px 28px;}.sig-box{text-align:center;}.sig-line{border-top:2px solid #e2e8f0;margin-top:48px;padding-top:10px;font-size:13px;color:#475569;}@media print{.no-print{display:none;}}</style></head>
