@@ -2362,9 +2362,34 @@
                 }).join('')}</tbody></table></div>`;
         }
 
-        function delRec(sid,date){if(!confirm('Delete this record?'))return;app.records=app.records.filter(r=>!(r.sid===sid&&r.date===date));saveData();render();}
+        // Late deductions are separate entries created at clock-in. When a record's login time is edited,
+        // replaced, or the record is deleted, bring that day's late deduction back in line with the record.
+        // Returns '' (nothing to do), 'removed', 'updated', or 'applied' (already applied to payroll → left untouched).
+        function syncLateDeduction(sid, date) {
+            const idx = app.deductions.findIndex(d => d.staffId === sid && d.deductionDate === date && d.type === 'late');
+            if (idx < 0) return '';
+            const d = app.deductions[idx], r = app.records.find(x => x.sid === sid && x.date === date), st = app.staff.find(x => x.id === sid);
+            let lm = null;
+            if (r && !r.status && r.in) {
+                const lt = new Date('2000-01-01 ' + r.in), ct = new Date('2000-01-01 07:35:00');
+                if (!isNaN(lt) && lt > ct) lm = Math.floor((lt - ct) / 60000);
+            }
+            const newAmt = (lm !== null && st) ? roundUp((getHourlyRate(st.position) / 60) * lm) : 0;
+            if (d.status === 'applied') return (lm === null || newAmt !== d.amount) ? 'applied' : '';
+            if (lm === null) { app.deductions.splice(idx, 1); return 'removed'; }
+            if (st && (newAmt !== d.amount || d.reason !== `Late Login: ${lm} minute(s) late (at ${r.in})`)) {
+                d.amount = newAmt; d.reason = `Late Login: ${lm} minute(s) late (at ${r.in})`; d.statusUpdatedAt = Date.now(); return 'updated';
+            }
+            return '';
+        }
+        function notifyLateSync(res) {
+            if (res === 'removed') alert('✅ Login is now on time — the late deduction for that day was removed.');
+            else if (res === 'updated') alert('✅ The late deduction for that day was recalculated for the new login time.');
+            else if (res === 'applied') alert('⚠️ The late deduction for that day was already marked APPLIED to payroll, so it was NOT changed. Delete or fix it manually in the Deductions tab if needed.');
+        }
+        function delRec(sid,date){if(!confirm('Delete this record?'))return;app.records=app.records.filter(r=>!(r.sid===sid&&r.date===date));notifyLateSync(syncLateDeduction(sid,date));saveData();render();}
         function editRec(sid,date){const r=app.records.find(r=>r.sid===sid&&r.date===date);if(!r)return;if(r.status){alert('Cannot edit Rest Day, Absent, or On-Call records');return;}app.editingRecord={sid,date};render();}
-        function saveEdit(sid,date){const r=app.records.find(r=>r.sid===sid&&r.date===date);if(!r)return;const ni=document.getElementById('edit-in').value,no=document.getElementById('edit-out').value,ni2=(document.getElementById('edit-in2')||{}).value||'',no2=(document.getElementById('edit-out2')||{}).value||'';if(!ni&&!no){alert('Enter at least one time');return;}r.in=ni||null;r.out=no||null;r.in2=ni2||null;r.out2=no2||null;app.editingRecord=null;saveData();render();}
+        function saveEdit(sid,date){const r=app.records.find(r=>r.sid===sid&&r.date===date);if(!r)return;const ni=document.getElementById('edit-in').value,no=document.getElementById('edit-out').value,ni2=(document.getElementById('edit-in2')||{}).value||'',no2=(document.getElementById('edit-out2')||{}).value||'';if(!ni&&!no){alert('Enter at least one time');return;}r.in=ni||null;r.out=no||null;r.in2=ni2||null;r.out2=no2||null;app.editingRecord=null;notifyLateSync(syncLateDeduction(sid,date));saveData();render();}
         function cancelEdit(){app.editingRecord=null;render();}
 
         // ═══════════════════════════════════════════════
@@ -2597,7 +2622,8 @@
             const s=document.getElementById('scan-start').value, e=document.getElementById('scan-end').value;
             if(!s||!e) return showMsg('scan-msg','❌ Select both dates','err');
             if(new Date(s)>new Date(e)) return showMsg('scan-msg','❌ Start before end','err');
-            let found=0,created=0;
+            let found=0,created=0,fixed=0;
+            app.deductions.filter(d=>d.type==='late'&&d.deductionDate>=s&&d.deductionDate<=e).forEach(d=>{const res=syncLateDeduction(d.staffId,d.deductionDate);if(res==='removed'||res==='updated')fixed++;});
             app.records.filter(r=>{const rd=new Date(r.date);return rd>=new Date(s)&&rd<=new Date(e)&&r.in&&r.status!=='oncall';}).forEach(r=>{
                 const lt=new Date('2000-01-01 '+r.in),ct=new Date('2000-01-01 07:35:00');
                 if(lt>ct){found++;if(!app.deductions.find(d=>d.staffId===r.sid&&d.deductionDate===r.date&&d.type==='late')){
@@ -2607,7 +2633,8 @@
                     created++;
                 }}
             });
-            if(created>0){saveData();showMsg('scan-msg',`✅ ${found} late login(s) found. ${created} deduction(s) created.`,'ok');setTimeout(()=>render(),1500);}
+            const fixedNote=fixed?` ${fixed} outdated late deduction(s) corrected/removed.`:'';
+            if(created>0||fixed>0){saveData();showMsg('scan-msg',`✅ ${found} late login(s) found. ${created} deduction(s) created.${fixedNote}`,'ok');setTimeout(()=>render(),1500);}
             else if(found>0) showMsg('scan-msg',`ℹ️ ${found} late login(s) found — deductions already exist for all.`,'ok');
             else showMsg('scan-msg','ℹ️ No late logins found in this range.','ok');
         }
@@ -3589,14 +3616,14 @@
             if(status&&(status==='rest'||status==='absent')){
                 if(ex){if(!confirm('Record exists. Overwrite?'))return;ex.status=status;ex.in=null;ex.out=null;ex.oncallHours=null;ex.notes=notes||'Manually set';}
                 else app.records.push({id:Date.now(),sid,date,in:null,out:null,status,notes:notes||'Manually set'});
-                saveData();showMsg('manual-msg','✅ Status recorded!','ok');clearManualForm();render();return;
+                notifyLateSync(syncLateDeduction(sid,date));saveData();showMsg('manual-msg','✅ Status recorded!','ok');clearManualForm();render();return;
             }
             if(status==='oncall'){
                 const och=parseFloat(document.getElementById('manual-oncall-hours').value);
                 if(!och||och<=0) return showMsg('manual-msg','❌ Enter on-call hours','err');
                 if(ex){if(!confirm('Record exists. Overwrite?'))return;ex.status='oncall';ex.in=null;ex.out=null;ex.oncallHours=och;ex.notes=notes||'On-Call';}
                 else app.records.push({id:Date.now(),sid,date,in:null,out:null,status:'oncall',oncallHours:och,notes:notes||'On-Call'});
-                const st2=app.staff.find(x=>x.id===sid);const otr2=st2?(st2.otRate||RATES[st2.position].ot):0;const pay=roundUp(och*otr2);saveData();showMsg('manual-msg',`✅ On-Call: ${och}h × ₱${otr2} = ₱${pay}`,'ok');clearManualForm();render();return;
+                const st2=app.staff.find(x=>x.id===sid);const otr2=st2?(st2.otRate||RATES[st2.position].ot):0;const pay=roundUp(och*otr2);notifyLateSync(syncLateDeduction(sid,date));saveData();showMsg('manual-msg',`✅ On-Call: ${och}h × ₱${otr2} = ₱${pay}`,'ok');clearManualForm();render();return;
             }
             const li2=document.getElementById('manual-login2').value, lo2=document.getElementById('manual-logout2').value;
             if(!li&&!lo) return showMsg('manual-msg','❌ Enter at least one time','err');
@@ -3604,7 +3631,7 @@
             if(li2&&lo2){const lim2=parseInt(li2.split(':')[0])*60+parseInt(li2.split(':')[1]),lom2=parseInt(lo2.split(':')[0])*60+parseInt(lo2.split(':')[1]);if(lom2<=lim2)return showMsg('manual-msg','❌ 2nd Logout must be after 2nd Login','err');}
             if(ex){if(!confirm('Record exists. Overwrite?'))return;if(li)ex.in=li;if(lo)ex.out=lo;ex.in2=li2||null;ex.out2=lo2||null;ex.status=status||null;ex.notes=notes||'Edited';showMsg('manual-msg','✅ Updated!','ok');}
             else{app.records.push({id:Date.now(),sid,date,in:li||null,out:lo||null,in2:li2||null,out2:lo2||null,status:status||null,oncallHours:null,notes:notes||'Manually added'});showMsg('manual-msg','✅ Added!','ok');}
-            saveData();clearManualForm();render();
+            notifyLateSync(syncLateDeduction(sid,date));saveData();clearManualForm();render();
         }
 
         // ═══════════════════════════════════════════════
