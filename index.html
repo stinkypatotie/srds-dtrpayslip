@@ -2012,7 +2012,7 @@
             const lt=new Date('2000-01-01 '+time), ct=new Date('2000-01-01 07:35:00');
             const isOncallDay = existing && existing.status === 'oncall';
             let lateMsg='';
-            if (lt>ct && !isOncallDay) {
+            if ((lt-ct)>=60000 && !isOncallDay) {
                 const exLate=app.deductions.find(d=>d.staffId===sid&&d.deductionDate===td&&d.type==='late');
                 if (!exLate) {
                     const lm=Math.floor((lt-ct)/60000), ld=roundUp((getHourlyRate(s.position)/60)*lm);
@@ -2362,6 +2362,23 @@
                 }).join('')}</tbody></table></div>`;
         }
 
+        // A "partial day" is a finished day paid by hours worked (hours < full shift). Those days are NOT charged a late
+        // deduction in payroll, because the missed time is already left out of the pay (hours × hourly rate).
+        function isPartialDayRecord(sid, date) {
+            const r = app.records.find(x => x.sid === sid && x.date === date);
+            if (!r || r.status) return false;
+            const h = calcH(r.in, r.out) + calcH(r.in2, r.out2);
+            return h > 0 && h < app.settings.fullShiftHours;
+        }
+        // Pending deductions for a payroll period (late deductions on partial days are left out)
+        function payrollDeductions(staffId) {
+            return app.deductions.filter(d => {
+                const dd = new Date(d.deductionDate);
+                if (d.staffId !== staffId || dd < new Date(app.start) || dd > new Date(app.end) || d.status !== 'pending') return false;
+                return !(d.type === 'late' && isPartialDayRecord(d.staffId, d.deductionDate));
+            });
+        }
+
         // Late deductions are separate entries created at clock-in. When a record's login time is edited,
         // replaced, or the record is deleted, bring that day's late deduction back in line with the record.
         // Returns '' (nothing to do), 'removed', 'updated', or 'applied' (already applied to payroll → left untouched).
@@ -2372,7 +2389,7 @@
             let lm = null;
             if (r && !r.status && r.in) {
                 const lt = new Date('2000-01-01 ' + r.in), ct = new Date('2000-01-01 07:35:00');
-                if (!isNaN(lt) && lt > ct) lm = Math.floor((lt - ct) / 60000);
+                if (!isNaN(lt) && (lt - ct) >= 60000) lm = Math.floor((lt - ct) / 60000);
             }
             const newAmt = (lm !== null && st) ? roundUp((getHourlyRate(st.position) / 60) * lm) : 0;
             if (d.status === 'applied') return (lm === null || newAmt !== d.amount) ? 'applied' : '';
@@ -2416,7 +2433,7 @@
                 recs.forEach(r=>{if(r.status==='oncall'){och+=parseFloat(r.oncallHours||0);}else if(!r.status){const h=calcH(r.in,r.out)+calcH(r.in2,r.out2);if(h>=app.settings.fullShiftHours){fd++;oh+=calcOT(r.out2||r.out);}else if(h>0){ud++;ph+=h;uh+=(app.settings.fullShiftHours-h);}}});
                 const rt=RATES[s.position],hr=getHourlyRate(s.position);
                 const rp=roundUp(fd*rt.daily),pp=roundUp(ph*hr),op=roundUp(oh*rt.ot),ocp=roundUp(och*rt.ot),gross=rp+pp+op+ocp;
-                const dip=app.deductions.filter(d=>{const dd=new Date(d.deductionDate);return d.staffId===s.id&&dd>=new Date(app.start)&&dd<=new Date(app.end)&&d.status==='pending';});
+                const dip=payrollDeductions(s.id);
                 const td=roundUp(dip.reduce((sum,d)=>sum+d.amount,0));
                 const inc=app.incentives[s.id]||{enabled:false,amount:0,label:'Incentive'};
                 const incAmt=inc.enabled?roundUp(parseFloat(inc.amount)||0):0;
@@ -2461,7 +2478,7 @@
             recs.forEach(r=>{if(r.status==='oncall'){och+=parseFloat(r.oncallHours||0);}else if(!r.status){const h=calcH(r.in,r.out)+calcH(r.in2,r.out2);if(h>=app.settings.fullShiftHours){fd++;oh+=calcOT(r.out2||r.out);}else if(h>0){ud++;ph+=h;uh+=(app.settings.fullShiftHours-h);}}});
             const rt=RATES[staff.position],hr=getHourlyRate(staff.position);
             const rp=roundUp(fd*rt.daily),pp=roundUp(ph*hr),op=roundUp(oh*rt.ot),ocp=roundUp(och*rt.ot),gross=rp+pp+op+ocp;
-            const dip=app.deductions.filter(d=>{const dd=new Date(d.deductionDate);return d.staffId===staffId&&dd>=new Date(app.start)&&dd<=new Date(app.end)&&d.status==='pending';});
+            const dip=payrollDeductions(staffId);
             const td=roundUp(dip.reduce((sum,d)=>sum+d.amount,0));
             const inc=app.incentives[staffId]||{enabled:false,amount:0,label:'Incentive'};
             const incAmt=inc.enabled?roundUp(parseFloat(inc.amount)||0):0;
@@ -2520,7 +2537,7 @@
             recs.forEach(r => { if (r.status==='oncall') { och+=parseFloat(r.oncallHours||0); } else if (!r.status) { const h = calcH(r.in, r.out)+calcH(r.in2, r.out2); if (h >= app.settings.fullShiftHours) { fd++; oh += calcOT(r.out2||r.out); } else if (h > 0) { ph += h; } } });
             const rt = RATES[s.position], hr = getHourlyRate(s.position);
             const rp = roundUp(fd*rt.daily), pp = roundUp(ph*hr), op = roundUp(oh*rt.ot), ocp = roundUp(och*rt.ot), gross = rp+pp+op+ocp;
-            const dip = app.deductions.filter(d => { const dd = new Date(d.deductionDate); return d.staffId === sid && dd >= new Date(app.start) && dd <= new Date(app.end) && d.status === 'pending'; });
+            const dip = payrollDeductions(sid);
             const td = roundUp(dip.reduce((sum,d) => sum+d.amount, 0));
             const net = gross - td + incAmt;
             const netEl = document.getElementById('inc-net-'+sid);
@@ -2581,14 +2598,15 @@
             const pending=allFiltered.filter(d=>d.status==='pending'), applied=allFiltered.filter(d=>d.status==='applied');
             const lateByStaff={};
             pending.filter(d=>d.type==='late').forEach(d=>{
-                if(!lateByStaff[d.staffId]){lateByStaff[d.staffId]={count:0,total:0,staff:app.staff.find(s=>s.id===d.staffId)};}
-                lateByStaff[d.staffId].count++; lateByStaff[d.staffId].total+=d.amount;
+                if(!lateByStaff[d.staffId]){lateByStaff[d.staffId]={count:0,total:0,skipped:0,staff:app.staff.find(s=>s.id===d.staffId)};}
+                if(isPartialDayRecord(d.staffId,d.deductionDate)){lateByStaff[d.staffId].skipped++;}
+                else{lateByStaff[d.staffId].count++; lateByStaff[d.staffId].total+=d.amount;}
             });
             return `
                 ${Object.keys(lateByStaff).length>0?`<div class="card" style="border-left:4px solid var(--amber);">
                     <div class="section-title" style="color:var(--amber);">⏰ Late Login Summary</div>
                     ${Object.values(lateByStaff).map(x=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:10px;background:var(--surface-2);border-radius:var(--radius-sm);margin-bottom:8px;">
-                        <div><div style="font-weight:700;">${x.staff?x.staff.name:'Unknown'}</div><div style="font-size:12px;color:var(--text-2);">${x.count} late login${x.count>1?'s':''}</div></div>
+                        <div><div style="font-weight:700;">${x.staff?x.staff.name:'Unknown'}</div><div style="font-size:12px;color:var(--text-2);">${x.count} late login${x.count===1?'':'s'}${x.skipped?` · ${x.skipped} on a partial day (not charged — paid by hours worked)`:''}</div></div>
                         <div style="font-weight:800;color:var(--red);font-size:18px;">₱${x.total.toFixed(2)}</div>
                     </div>`).join('')}
                 </div>`:''}
@@ -2626,7 +2644,7 @@
             app.deductions.filter(d=>d.type==='late'&&d.deductionDate>=s&&d.deductionDate<=e).forEach(d=>{const res=syncLateDeduction(d.staffId,d.deductionDate);if(res==='removed'||res==='updated')fixed++;});
             app.records.filter(r=>{const rd=new Date(r.date);return rd>=new Date(s)&&rd<=new Date(e)&&r.in&&r.status!=='oncall';}).forEach(r=>{
                 const lt=new Date('2000-01-01 '+r.in),ct=new Date('2000-01-01 07:35:00');
-                if(lt>ct){found++;if(!app.deductions.find(d=>d.staffId===r.sid&&d.deductionDate===r.date&&d.type==='late')){
+                if((lt-ct)>=60000){found++;if(!app.deductions.find(d=>d.staffId===r.sid&&d.deductionDate===r.date&&d.type==='late')){
                     const st=app.staff.find(x=>x.id===r.sid);if(!st)return;
                     const lm=Math.floor((lt-ct)/60000),ld=roundUp((getHourlyRate(st.position)/60)*lm);
                     app.deductions.push({id:'deduct-'+Date.now()+'-'+Math.random().toString(36).substr(2,5),staffId:r.sid,amount:ld,reason:`Late Login: ${lm} min late (at ${r.in})`,deductionDate:r.date,createdDate:new Date().toISOString(),status:'pending',statusUpdatedAt:Date.now(),type:'late'});
@@ -3085,7 +3103,7 @@
                 recs.forEach(r=>{if(!r.status){const h=calcH(r.in,r.out);if(h>=app.settings.fullShiftHours){fd++;oh+=calcOT(r.out);}else if(h>0){ud++;ph+=h;uh+=(app.settings.fullShiftHours-h);}}});
                 const rt=RATES[s.position],hr=getHourlyRate(s.position);
                 const rp=roundUp(fd*rt.daily),pp=roundUp(ph*hr),op=roundUp(oh*rt.ot),gr=rp+pp+op;
-                const dip=app.deductions.filter(d=>{const dd=new Date(d.deductionDate);return d.staffId===s.id&&dd>=new Date(app.start)&&dd<=new Date(app.end)&&d.status==='pending';});
+                const dip=payrollDeductions(s.id);
                 const td=roundUp(dip.reduce((sum,d)=>sum+d.amount,0));
                 rows.push([s.name,fd,ud,ph.toFixed(2),uh.toFixed(2),oh,rp,pp,op,gr,td,gr-td]);
             });
