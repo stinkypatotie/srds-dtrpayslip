@@ -2373,6 +2373,11 @@
                 if (app.view === 'deductions' || app.view === 'thirteenth' || app.view === 'payroll') render();
             }
         }
+        // True unless the employee is resigned/terminated (unknown/deleted staff are kept so nothing silently vanishes)
+        function isOnboardStaffId(id) {
+            const st = app.staff.find(x => x.id === id);
+            return !st || !st.status || st.status === 'onboard';
+        }
         // A "partial day" is a finished day paid by hours worked (hours < full shift). Those days are NOT charged a late
         // deduction in payroll, because the missed time is already left out of the pay (hours × hourly rate).
         function isPartialDayRecord(sid, date) {
@@ -2604,7 +2609,7 @@
         function renderDeductionsList() {
             if (app.deductions.length===0) return `<div class="card" style="text-align:center;color:var(--text-3);padding:40px;">No deductions recorded yet</div>`;
             const sf = app.deductionStaffFilter||'';
-            const allFiltered = sf ? app.deductions.filter(d=>d.staffId===sf) : app.deductions;
+            const allFiltered = (sf ? app.deductions.filter(d=>d.staffId===sf) : app.deductions).filter(d=>isOnboardStaffId(d.staffId));
             if (sf && allFiltered.length===0) return `<div class="card" style="text-align:center;color:var(--text-3);padding:40px;">No deductions found for this employee</div>`;
             const pending=allFiltered.filter(d=>d.status==='pending'), applied=allFiltered.filter(d=>d.status==='applied');
             const lateByStaff={};
@@ -2627,8 +2632,9 @@
                     <tbody>${pending.map(d=>{const st=app.staff.find(s=>s.id===d.staffId);return`<tr class="${d.type==='late'?'deduction-item':''}"><td>${new Date(d.deductionDate).toLocaleDateString()}</td><td>${st?st.name:'?'}</td><td style="color:var(--red);font-weight:700;">₱${d.amount.toFixed(2)}</td><td style="font-size:12px;">${d.type==='late'?'⏰ ':''}${d.reason||'-'}</td><td><div class="action-buttons"><button class="btn-warning btn-sm" onclick="markDeductionApplied('${d.id}')">✅</button><button class="btn-danger btn-sm" onclick="deleteDeduction('${d.id}')">🗑️</button></div></td></tr>`;}).join('')}
                     </tbody></table></div>
                 </div>`:''}
-                ${applied.length>0?`<div class="card">
-                    <div class="section-title" style="color:var(--green);">✅ Applied (${applied.length})</div>
+                ${applied.length>0&&!app.showApplied?`<div class="card" style="text-align:center;"><button class="btn-info btn-sm" onclick="app.showApplied=true;render()">✅ Show already-deducted entries (${applied.length})</button></div>`:''}
+                ${applied.length>0&&app.showApplied?`<div class="card">
+                    <div class="section-title" style="color:var(--green);display:flex;justify-content:space-between;align-items:center;">✅ Applied (${applied.length}) <button class="btn-info btn-sm" onclick="app.showApplied=false;render()">Hide</button></div>
                     <div class="table-wrap"><table><thead><tr><th>Date</th><th>Employee</th><th>Amount</th><th>Reason</th><th></th></tr></thead>
                     <tbody>${applied.map(d=>{const st=app.staff.find(s=>s.id===d.staffId);return`<tr style="opacity:.65;"><td>${new Date(d.deductionDate).toLocaleDateString()}</td><td>${st?st.name:'?'}</td><td>₱${d.amount.toFixed(2)}</td><td style="font-size:12px;">${d.reason||'-'}</td><td><button class="btn-danger btn-sm" onclick="deleteDeduction('${d.id}')">🗑️</button></td></tr>`;}).join('')}
                     </tbody></table></div>
@@ -2652,8 +2658,8 @@
             if(!s||!e) return showMsg('scan-msg','❌ Select both dates','err');
             if(new Date(s)>new Date(e)) return showMsg('scan-msg','❌ Start before end','err');
             let found=0,created=0,fixed=0;
-            app.deductions.filter(d=>d.type==='late'&&d.deductionDate>=s&&d.deductionDate<=e).forEach(d=>{const res=syncLateDeduction(d.staffId,d.deductionDate);if(res==='removed'||res==='updated')fixed++;});
-            app.records.filter(r=>{const rd=new Date(r.date);return rd>=new Date(s)&&rd<=new Date(e)&&r.in&&r.status!=='oncall';}).forEach(r=>{
+            app.deductions.filter(d=>d.type==='late'&&d.deductionDate>=s&&d.deductionDate<=e&&isOnboardStaffId(d.staffId)).forEach(d=>{const res=syncLateDeduction(d.staffId,d.deductionDate);if(res==='removed'||res==='updated')fixed++;});
+            app.records.filter(r=>{const rd=new Date(r.date);return rd>=new Date(s)&&rd<=new Date(e)&&r.in&&r.status!=='oncall'&&isOnboardStaffId(r.sid);}).forEach(r=>{
                 const lt=new Date('2000-01-01 '+r.in),ct=new Date('2000-01-01 07:35:00');
                 if((lt-ct)>=60000){found++;if(!app.deductions.find(d=>d.staffId===r.sid&&d.deductionDate===r.date&&d.type==='late')){
                     const st=app.staff.find(x=>x.id===r.sid);if(!st)return;
