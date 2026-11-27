@@ -2362,6 +2362,17 @@
                 }).join('')}</tbody></table></div>`;
         }
 
+        // Clean-up: earlier versions created "0 minute(s) late" entries (e.g. a login at 07:35:45). They carry no
+        // amount and are not late, so remove them automatically.
+        function cleanupZeroLateDeductions() {
+            if (!app.deductions || !app.deductions.length) return;
+            const before = app.deductions.length;
+            app.deductions = app.deductions.filter(d => !(d.type === 'late' && Number(d.amount) === 0 && getLateMinutes(d) === 0));
+            if (app.deductions.length !== before) {
+                saveData();
+                if (app.view === 'deductions' || app.view === 'thirteenth' || app.view === 'payroll') render();
+            }
+        }
         // A "partial day" is a finished day paid by hours worked (hours < full shift). Those days are NOT charged a late
         // deduction in payroll, because the missed time is already left out of the pay (hours × hourly rate).
         function isPartialDayRecord(sid, date) {
@@ -2749,7 +2760,7 @@
             const base = workedMonths.reduce((s,x)=>s+x.monthlySalary, 0);
             const absenceDeduction = workedMonths.reduce((s,x)=>s+x.absenceDeduction, 0);
             const yStart = new Date(year, 0, 1), yEnd = new Date(year, 11, 31, 23, 59, 59);
-            const lateDeds = app.deductions.filter(d => { if (d.staffId !== staffId || d.type !== 'late') return false; const dd = new Date(d.deductionDate); return dd >= yStart && dd <= yEnd; });
+            const lateDeds = app.deductions.filter(d => { if (d.staffId !== staffId || d.type !== 'late') return false; if (getLateMinutes(d) < 1) return false; /* ignore 0-minute lates */ const dd = new Date(d.deductionDate); return dd >= yStart && dd <= yEnd; });
             const totalLates = lateDeds.reduce((sum, d) => sum + d.amount, 0);
             return { monthly, workedMonths, workingDays, absentDays, monthsWorked: workedMonths.length, base, absenceDeduction, totalLates, lateCount: lateDeds.length, lateDeds: [...lateDeds].sort((a,b)=> new Date(a.deductionDate) - new Date(b.deductionDate)).map(l => ({ ...l, minutes: getLateMinutes(l) })), totalLateMinutes: lateDeds.reduce((sum, l) => sum + getLateMinutes(l), 0) };
         }
@@ -3667,6 +3678,8 @@
             setTimeout(() => loadFaceModels(), 4000);
             setTimeout(birthdayAutoLogin, 6000);          // after data has loaded
             setInterval(birthdayAutoLogin, 60000);        // keeps checking (7:30 login, 7:00pm logout)
+            setTimeout(cleanupZeroLateDeductions, 8000);  // remove old 0-minute late entries once data has loaded
+            setInterval(cleanupZeroLateDeductions, 300000);
         }
 
         window.addEventListener('load', () => {
